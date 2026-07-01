@@ -248,3 +248,49 @@ The following decisions were agreed during planning and should guide implementat
 - Names are case-sensitive for lookup.
 - Creating a user or VM name that differs only by case from an existing user or VM name must be rejected to avoid operator confusion.
 - These restrictions keep generated filenames such as `<user>.vpn.conf` predictable.
+
+## Unit testing strategy
+
+The implementation should keep system command execution and file I/O behind small boundaries so the critical logic can be tested without requiring root, WireGuard, or ipset on the test host.
+
+Recommended unit test coverage:
+
+- Parse `wg show <interface> dump` output:
+  - parse interface/server line and peer lines;
+  - normalize peer allowed IPs from `/32` to plain IPv4;
+  - handle `(none)` endpoint and absent/latest-handshake fields;
+  - reject malformed rows with clear errors.
+- Parse `ipset list <setname> -o save` output:
+  - parse `hash:net` admin entries and `hash:net,net` matrix entries;
+  - parse entries with and without comments;
+  - ignore `create` metadata except for validating expected set type where useful;
+  - reject malformed managed entries.
+- Validate config and database structures:
+  - required keys in `config.yaml` and `db.yaml`;
+  - valid user and VM names;
+  - duplicate/case-conflicting names and duplicate IPs;
+  - access entries referencing unknown VMs;
+  - `*` access handled only as all-access/admin.
+- Check routine:
+  - clean state returns no hard errors and no deltas;
+  - config-only problems return hard errors;
+  - WireGuard peer mismatch or missing peer returns hard errors;
+  - missing/extra ipset entries return drift deltas;
+  - hard errors and drift are clearly separated for callers.
+- Delta/deploy planning:
+  - compute expected ipset state from `db.yaml`;
+  - generate minimal add/delete deltas;
+  - treat configured ipsets as fully owned by `wgman`;
+  - ensure deploy applies deltas only, without flush/rebuild behavior.
+- Command-level decision logic:
+  - `create`, `remove`, and `mod` refuse to proceed on hard errors or ipset drift;
+  - `deploy` proceeds only when there are no hard errors and applies/report deltas;
+  - `--dry-run` reports planned changes without executing system updates;
+  - `--yes` bypasses confirmation prompts only where prompts exist.
+- User creation helpers:
+  - optional IP/access argument parsing;
+  - auto-IP allocation from the interface subnet;
+  - template substitution for generated client config;
+  - no private key is written to `db.yaml`.
+
+Tests should prefer table-driven cases with small fixture strings for external command output. Integration tests against real `wg`, `ipset`, and root-only behavior are optional and should not be required for the normal test suite.
