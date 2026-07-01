@@ -75,6 +75,11 @@ The tool is supposed to live in `/usr/local/sbin` - it must be one file executab
 
 The tool is invoked as `wgman <cmd> [params...]`. Commands description follows. A special `help` (or `-h` flag) command must show the list and short explnation of commands and their params.
 
+Global flags:
+
+- `--yes` - skip interactive confirmation prompts.
+- `--dry-run` - show planned changes without applying them. Supported by `deploy`, `remove`, and `mod`.
+
 ### Check
 
 `wgman check`
@@ -109,7 +114,7 @@ Also obtain the ip address of the `<config.interface>` - find the best practice.
 
 If the check is successful - return success message. If not successful - return deviations.
 
-Internally, `check` must be a routine, that detects inconsistancies in the config files and current wg and ipsets confguration. The results may be used to inform the users (like this `check` command), block further processing, or apply the differences to the actual system state.
+Internally, `check` must be a routine, that detects inconsistancies in the config files and current wg and ipsets confguration. The results may be used to inform the users (like this `check` command), block further processing, or apply the differences to the actual system state. The internal result must distinguish hard errors from ipset drift, and must return prepared ipset deltas that callers can report or apply.
 
 At the end of each command clearly and concisely report the result.
 
@@ -139,6 +144,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 `wgman create <name> [ip] [res1,res2...]`
 
 - calls the `check` internally for the state and config validation.
+- refuse to run if `check` detects any hard errors or ipset drift
 - check, if the user is not already created
 - if the second arg is present it is an IP - use it as client ip. Otherwise, generate ip from the interface ip range (use max available IP among the users + 1, error on failure)
 - generate wireguard private and public keys for the new user (check `wg` man page)
@@ -156,6 +162,7 @@ Internally, the "deploy" part must be coded as a routine, that applies changes t
 `wgman remove <name>`
 
 - calls the `check` internally for the state and config validation.
+- refuse to run if `check` detects any hard errors or ipset drift
 - check, if the user exists
 - issue a warning to confirm if the user XXX (ip), with access to x,y,z must be deleted
 - update `db.yaml`: remove user and his access entries
@@ -170,6 +177,7 @@ Reuse the `deploy` routine to update the state.
 `wgman mod <name> <+res1,-res2...>`
 
 - calls the `check` internally for the state and config validation.
+- refuse to run if `check` detects any hard errors or ipset drift
 - check, if the user exists
 - read the agr that follows username - it must be a list of existing VMs, separated by commas (no space), prefixed by `+` or `-`
 - `+/-` represent intended change in access - add or remove the VM from the access list
@@ -181,7 +189,62 @@ Reuse the `deploy` routine to update the state.
 
 - calls the `check` internally for the state and config validation. In case of this command, the difference if supposed to be applied to the system state (the file state supposed to be intended).
 - importantly, user list is not supposed to be changed, just their accesses. Mismatch in users during the validateion is an error.
-- report the planned updates, confirm with the user
-- update system state (deploy) - update the relevant ipsets
+- report the planned updates from the deltas returned by internal `check`, confirm with the user
+- update system state (deploy) - update the relevant ipsets by applying deltas only
 
 Reuse the `deploy` routine to update the state.
+
+## Interview findings
+
+The following decisions were agreed during planning and should guide implementation.
+
+### State validation and drift
+
+- Internal `check` returns two categories of findings:
+  - hard errors: invalid config/schema, duplicate IPs, invalid names, unknown VMs in `access`, users outside the WireGuard interface subnet, WireGuard peer mismatches, missing configured ipsets, and similar issues that make the intended state unsafe or ambiguous;
+  - ipset drift: missing or extra entries in the configured access ipsets compared with `db.yaml`.
+- `check` reports hard errors and ipset drift. Any finding makes the command fail.
+- `create`, `remove`, and `mod` must refuse to run if `check` reports either hard errors or ipset drift. Direct changes to `db.yaml` should be applied through a clean state.
+- `deploy` may run when the only detected problem is ipset drift. It must treat `db.yaml` as the intended access state and reconcile the configured ipsets to it.
+- Internal `check` must prepare concrete ipset deltas so command logic can either report them or apply them.
+- The configured `sets.all` and `sets.matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
+- `deploy` applies deltas only: add missing expected entries and delete unexpected entries. It must not flush/rebuild whole ipsets unless a future explicit option is added.
+
+### Key material and generated configs
+
+- `db.yaml` must not store client private keys.
+- `create` generates the client private key and writes it only into the generated `<user>.vpn.conf` file in the current directory.
+- If the generated client config is lost, recovery is manual or the user must be recreated.
+
+### Create command parsing
+
+- `create <name> [ip] [res1,res2...]` parses the second argument as an IP address if it is valid IPv4 or IPv4 CIDR input.
+- If the second argument is not an IP address, parse it as the comma-separated access list and auto-assign the user IP.
+- Stored user IPs and WireGuard allowed IPs should be normalized to plain IPv4 addresses without `/32`.
+
+### Confirmation and dry-run behavior
+
+- `remove` and `deploy` prompt by default.
+- `create` and `mod` do not prompt after validation.
+- Global `--yes` skips confirmations for automation.
+- Global `--dry-run` is supported by `deploy`, `remove`, and `mod`; it reports planned changes without applying them.
+
+### Configuration format and dependencies
+
+- Keep YAML for `config.yaml` and `db.yaml` because readability for manual admin edits is preferred.
+- A lightweight, actively maintained, safe YAML parser dependency is acceptable.
+- Do not store or support arbitrary YAML object tags. Only plain mappings, lists, strings, and scalar values are expected.
+
+### Host and environment assumptions
+
+- Target Linux hosts with WireGuard tools, `iptables`, and `ipset` already installed.
+- `wgman` does not install packages.
+- `wgman` does not create firewall rules, create ipsets, or configure persistence across reboot in v1.
+- `check` verifies that the configured ipsets exist and reports clear errors if they do not.
+
+### Names
+
+- User and VM names must match `^[A-Za-z0-9_-]+$`.
+- Names are case-sensitive for lookup.
+- Creating a user or VM name that differs only by case from an existing user or VM name must be rejected to avoid operator confusion.
+- These restrictions keep generated filenames such as `<user>.vpn.conf` predictable.
