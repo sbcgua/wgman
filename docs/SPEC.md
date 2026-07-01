@@ -1,0 +1,187 @@
+# WGMAN - wireguard and resource access manager
+
+## General goal and considerations
+
+The tools is supposed to be a convenient wrapper around wireguard to enable adding/viewing allowed users by name and also control access of those users to specific internal resources (virtual machines) on the server. The problems to be solved:
+
+1) Standard `wg show` command does show only ip address and hashes of the clients - which is not human friendly
+2) Adding a new user requires creation a configuration file for him. It can be automated
+3) The server have several VMs. There is an `accept` firewall rule that controls forwarding from the wg0 interface and specific VMs via ipsets. For example: `iptables -i wg0 -o virbr0 -p tcp -m set --match-set wg-vm-access src,dst -j ACCEPT`, where `wg-vm-access` is a `hash:net,net` ipset (`net:net` allows also specifying net/32 which is an IP, because there is no dedicated `ip,ip` ipset). The tool should give a possibility to conrtol the access in a convenient way in some matrix form. As well as control the consistency after reboots or VPN user deletion. In addition, there is a special FW rule (and ipset) which allows any access for the given VPN client (admin user).
+
+## Configuration files
+
+Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 config files:
+
+`config.yaml` - holds global parameters to the program, in particular, such that are not impacted by VPN user changes and VMs changes.
+
+```yaml
+  interface: wg0 # managed sireguard interface
+  sets:
+    all: wg_allow_all # the set that allows access to all resources
+    matrix: wg_allow_matrix # the net,net set, that maps client IP to VM ip
+```
+
+`db.yaml` - the database of users, VMs and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
+
+- `users` section list users, every one contains `ip` and `pub` (public key) params. The ip is mostly for the human readability of the file. Wgman must user pub keys for its validations.
+- `vms` section - list of VM names and the corresponding ip addresses
+- The `access` matrix declares VMs accessible to a user (to be added to `sets.matrix`). If the VM = `*`, the user must be added to the `sets.all` (admin). A user may have access to multiple VMs.
+
+```yaml
+  users:
+    admin:
+      ip: 10.8.0.5
+      pub: 1j67823bghdhskfj6734gy324234
+    alice:
+      ip: 10.8.0.10
+      pub: 1j67823bghdhskfj6734gyg4564645
+    bob:
+      ip: 10.8.0.15
+      pub: 1j67823bghdhskfj6734gyg5345645
+
+  vms:
+    sandbox: 192.168.122.100
+    mailvm: 192.168.122.101
+
+  access:
+    admin:
+      - "*"
+    alice:
+      - sandbox
+    bob:
+      - sandbox
+      - mailvm
+```
+
+`user.conf.template` - is a template of the user VPN confguration file. It holds place holders `$CLIENT_PRIVATE_KEY`, `$CLIENT_VPN_IP`, `$SERVER_PUBLIC_KEY` that should be replaced on user creation, when the specific config is generated.
+
+```ini
+[Interface]
+PrivateKey = $CLIENT_PRIVATE_KEY
+Address = $CLIENT_VPN_IP/32
+
+[Peer]
+PublicKey = $SERVER_PUBLIC_KEY
+AllowedIPs = 10.1.0.0/24, 192.168.122.0/24
+Endpoint = myserver.com:55555
+PersistentKeepalive = 20
+```
+
+## WGMAN invocation
+
+The tool is supposed to running from root (check it at the beginning, return error it is not so).
+
+The tool is supposed to live in `/usr/local/sbin` - it must be one file executable.
+
+The tool is invoked as `wgman <cmd> [params...]`. Commands description follows. A special `help` (or `-h` flag) command must show the list and short explnation of commands and their params.
+
+### Check
+
+`wgman check`
+
+- read wg - `wg show <config.interface> dump`
+- read config files
+  - check duplicate users
+  - check duplicate vms
+  - check all user ips are in wg interface subnet
+  - check VMs defined in access section are present in vms sectio
+  - other reasonable consistency checks
+- check all wg users (hashes) are in file users (hash) and that ips are the same
+- check all file users (hashes) are in wg
+- read ip sets defined in `config.sets` - `ipset list <setname> -o save`
+- check = matrix,all
+
+For the output of `wg` consult the tool man page. But the idea is that the `dump` command outputs the data in concise machine readable way, where first output line lists, in particular, server public key. And the follwoing lines output users information: publick key, ip, endpoint, traffic ...
+
+```text
+4O11873947598347598374985739875935438947583=    pG57639475674957674958674957698475965976948=    55555   off
+5N78634586384658734563874875638465876378465=    (none)  175.43.19.18:54444    10.1.0.9/32    1782924438      116250608       317169928       off
+```
+
+For the output of `ipset list` consult the tool man page. But the sample is below.
+
+```text
+create wg_allow_matrix hash:net,net family inet hashsize 1024 maxelem 65536 comment bucketsize 12 initval 0x12345678
+add wg_allow_matrix 10.1.0.5,192.168.122.51 comment "test"
+```
+
+Also obtain the ip address of the `<config.interface>` - find the best practice. It will be needed to validate user ip addresses, create configs, etc.
+
+If the check is successful - return success message. If not successful - return deviations.
+
+Internally, `check` must be a routine, that detects inconsistancies in the config files and current wg and ipsets confguration. The results may be used to inform the users (like this `check` command), block further processing, or apply the differences to the actual system state.
+
+At the end of each command clearly and concisely report the result.
+
+## List
+
+`wgman list [filter]`
+
+- calls the `check` internally for the state and config validation. If fails - return with errors same a `check`.
+- list users and their ips
+- list resources and their ips
+- if filter is specified, the program outputs accesses for the user = filter
+
+## Show
+
+`wgman show`
+
+This is a convenient representation of `wg show <interface>`, essentially with user names instead of hashes.
+
+- calls the `check` internally for the state and config validation.
+- outputs: `username [ip] endpoint in out lasthandshake`
+  - endpoint without port
+  - in/out bytes in human readable format e.g. `2.07Mb` and in different colors (use dim colors)
+  - lasthandshake in format like `2d23h48m40s`
+
+## Create user
+
+`wgman create <name> [ip] [res1,res2...]`
+
+- calls the `check` internally for the state and config validation.
+- check, if the user is not already created
+- if the second arg is present it is an IP - use it as client ip. Otherwise, generate ip from the interface ip range (use max available IP among the users + 1, error on failure)
+- generate wireguard private and public keys for the new user (check `wg` man page)
+- check next arg (after the IP if it was there), it may be a comma separated (no space) list of VMs to add access to. If the list is present, check that all VMs are in the config (error otherwise)
+- generate config file: take the template, replace the variables, save as `<user>.vpn.conf` in the current dir
+- add to user to the `db.yaml`, add his accesses of they were given (otherwize no new access entries)
+- update system state (deploy)
+  - `wg set <config.interface> peer <client-pulic-key> allowed-ips <client-ip>`
+  - add to corresponding ipsets, if relevant - `ipset add <set> <client-ip>` for admin (`*`) access or `ipset add <set> <client-ip>,<vm-ip> comment <comment>`. Where `<comment>` is `<username> -> <vmname>`
+
+Internally, the "deploy" part must be coded as a routine, that applies changes to the system state. It can be reused in `remove`, `mod` and `deploy` command.
+
+## Remove user
+
+`wgman remove <name>`
+
+- calls the `check` internally for the state and config validation.
+- check, if the user exists
+- issue a warning to confirm if the user XXX (ip), with access to x,y,z must be deleted
+- update `db.yaml`: remove user and his access entries
+- update system state (deploy)
+  - remove corresponding ipset entries: `ipset del <set> <client-ip>` or `ipset del <set> <client-ip>,<vm-ip>`
+  - remove wg entry `wg set <config.interface> peer <client-pulic-key> remove`
+
+Reuse the `deploy` routine to update the state.
+
+## Modify access to resources
+
+`wgman mod <name> <+res1,-res2...>`
+
+- calls the `check` internally for the state and config validation.
+- check, if the user exists
+- read the agr that follows username - it must be a list of existing VMs, separated by commas (no space), prefixed by `+` or `-`
+- `+/-` represent intended change in access - add or remove the VM from the access list
+- update system state (deploy) - update the relevant ipsets
+
+Reuse the `deploy` routine to update the state.
+
+## Deploy
+
+- calls the `check` internally for the state and config validation. In case of this command, the difference if supposed to be applied to the system state (the file state supposed to be intended).
+- importantly, user list is not supposed to be changed, just their accesses. Mismatch in users during the validateion is an error.
+- report the planned updates, confirm with the user
+- update system state (deploy) - update the relevant ipsets
+
+Reuse the `deploy` routine to update the state.
