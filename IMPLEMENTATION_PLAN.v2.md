@@ -1,6 +1,6 @@
 # WGMAN Implementation Plan v2: Vertical Slices
 
-This is an alternative implementation plan for a fresh agent. It keeps the original [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) intact, but reorganizes the work into vertical slices so useful functionality exists after each middle phase.
+This document is a handoff plan for a fresh agent implementing `wgman`.
 
 Primary specification: [docs/SPEC.md](docs/SPEC.md). Do not duplicate or reinterpret command behavior here when the spec is more precise.
 
