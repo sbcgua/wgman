@@ -1,0 +1,20 @@
+# Template for generated client WireGuard configs.
+# wgman replaces these placeholders during "wgman create":
+#   $CLIENT_PRIVATE_KEY
+#   $CLIENT_VPN_IP
+#   $SERVER_PUBLIC_KEY
+#
+# Adjust AllowedIPs to include the VPN subnet and internal resource networks
+# that should be routed through this WireGuard tunnel.
+# Adjust Endpoint to the public host/IP and UDP port of this WireGuard server.
+# PersistentKeepalive is useful for clients behind NAT; tune or remove if needed.
+
+[Interface]
+PrivateKey = $CLIENT_PRIVATE_KEY
+Address = $CLIENT_VPN_IP/32
+
+[Peer]
+PublicKey = $SERVER_PUBLIC_KEY
+AllowedIPs = 10.1.0.0/24, 192.168.122.0/24
+Endpoint = myserver.com:55555
+PersistentKeepalive = 20

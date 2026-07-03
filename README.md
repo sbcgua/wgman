@@ -22,7 +22,7 @@ go mod tidy
 Development build:
 
 ```sh
-go build -o wgman .
+make build
 ```
 
 Release-style build:
@@ -38,15 +38,13 @@ The result should be a single executable file named `wgman`.
 Run the normal test suite:
 
 ```sh
-go test ./...
+make test
 ```
 
 Format and vet before handing off changes:
 
 ```sh
-gofmt -w .
-go test ./...
-go vet ./...
+make check
 ```
 
 If `staticcheck` is installed:
@@ -62,21 +60,15 @@ Unit tests should not require WireGuard, `ipset`, firewall tools, or root access
 Build the binary, then install it on the target Linux host:
 
 ```sh
-go build -trimpath -ldflags="-s -w" -o wgman .
-sudo install -m 0755 wgman /usr/local/sbin/wgman
+sudo make install
 ```
 
-Create the configuration directory:
+This installs:
 
-```sh
-sudo mkdir -p /etc/wireguard/wgman
-```
+- `/usr/local/sbin/wgman`
+- template config files in `/etc/wireguard/wgman`
 
-Place these files in `/etc/wireguard/wgman`:
-
-- `config.yaml`
-- `db.yaml`
-- `user.conf.template`
+Existing config files are not overwritten. Template sources live in [share/etc/wireguard/wgman](share/etc/wireguard/wgman).
 
 See [docs/SPEC.md](docs/SPEC.md) for the expected file structure.
 
