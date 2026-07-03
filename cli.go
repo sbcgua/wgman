@@ -66,6 +66,12 @@ func run(args []string) int {
 
 // cmdCheck implements "wgman check".
 func cmdCheck(gf *globalFlags, _ []string) int {
+	sys := &RealSystem{}
+	if !sys.IsRoot() {
+		fmt.Fprintln(os.Stderr, "error: wgman must be run as root")
+		return 1
+	}
+
 	cfg, err := LoadConfig(gf.configDir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -78,16 +84,26 @@ func cmdCheck(gf *globalFlags, _ []string) int {
 		return 1
 	}
 
-	result := ValidateOffline(cfg, db)
+	result := Check(cfg, db, sys)
+
 	if len(result.HardErrors) > 0 {
 		fmt.Fprintln(os.Stderr, "check: hard errors:")
 		for _, e := range result.HardErrors {
 			fmt.Fprintln(os.Stderr, "  -", e)
 		}
+	}
+	if len(result.Drift) > 0 {
+		fmt.Fprintln(os.Stderr, "check: ipset drift:")
+		for _, d := range result.Drift {
+			fmt.Fprintln(os.Stderr, "  -", d)
+		}
+	}
+
+	if !result.OK() {
 		fmt.Fprintln(os.Stderr, "check: FAILED")
 		return 1
 	}
 
-	fmt.Println("check: OK (offline validation passed; live WireGuard/ipset checks not yet implemented)")
+	fmt.Println("check: OK")
 	return 0
 }

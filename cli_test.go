@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 )
 
@@ -32,14 +33,21 @@ func TestRun_UnknownCommand(t *testing.T) {
 	}
 }
 
-func TestRun_CheckValid(t *testing.T) {
+// TestRun_CheckNotRoot verifies that wgman check rejects non-root callers.
+func TestRun_CheckNotRoot(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("test requires non-root execution")
+	}
 	code := run([]string{"check", "--config-dir", "testdata/valid-offline"})
-	if code != 0 {
-		t.Errorf("check with valid testdata exit code = %d, want 0", code)
+	if code == 0 {
+		t.Errorf("check as non-root should return non-zero")
 	}
 }
 
 func TestRun_CheckMissingDir(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("requires root; non-root is tested by TestRun_CheckNotRoot")
+	}
 	code := run([]string{"check", "--config-dir", "testdata/nonexistent"})
 	if code == 0 {
 		t.Errorf("check with missing dir should return non-zero")

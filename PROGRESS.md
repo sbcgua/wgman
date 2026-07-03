@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
-**Date:** 2026-07-01  
-**Status:** Phases 0 and 1 complete; `go test ./...` passes; binary builds and runs.
+**Date:** 2026-07-02  
+**Status:** Phases 0–3 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
 
 ---
 
@@ -34,37 +34,65 @@
 - User and VM IP values are valid IPv4 addresses.
 - `"*"` in an access list must be the sole entry (no mixing with VM names).
 
-`wgman check --config-dir <dir>` is wired up and reports:
-- Hard errors if validation fails (exit 1).
-- "offline validation passed" message if clean (exit 0; live WireGuard/ipset checks not yet implemented).
-
 Testdata fixture at [testdata/valid-offline/](testdata/valid-offline/) (config.yaml + db.yaml).
 
-Test files:
-- [config_test.go](config_test.go) — ~20 table-driven cases covering the full validation matrix.
-- [cli_test.go](cli_test.go) — CLI smoke tests including `check --config-dir testdata/valid-offline`.
+### Phase 2 — Parse Live System Output (complete)
+
+New files:
+- [parse_wg.go](parse_wg.go) — `ParseWGDump(output)` → `*WGDumpResult` / `[]WGPeer`.
+  - Tab-separated `wg show <iface> dump` format (server line + peer lines).
+  - `normalizeWGAllowedIP`: strips `/32` → plain IPv4; rejects multiple allowed-ips.
+  - `splitLines` shared utility (used by ipset parser too).
+- [parse_ipset.go](parse_ipset.go) — `ParseIPSetEntries(output)` → `[]IPSetEntry`.
+  - Skips `create` header lines; parses `add <setname> <entry> [comment "<comment>"]`.
+  - Handles quoted comments with spaces.
+- [system_real.go](system_real.go) — `RealSystem` struct implementing `SystemAdapter`.
+  - `IsRoot()`: `os.Getuid() == 0`.
+  - `InterfaceSubnet(iface)`: Go `net.InterfaceByName` + `Addrs()`, no shell-out.
+  - All `wg`/`ipset` commands via `exec.Command` with argument slices.
+
+Test files: [parse_wg_test.go](parse_wg_test.go), [parse_ipset_test.go](parse_ipset_test.go).
+
+### Phase 3 — Full `wgman check` (complete)
+
+New file:
+- [check.go](check.go) — `Check(cfg, db, sys)` → `*CheckResult`.
+  - Calls `ValidateOffline` first; returns early on hard errors.
+  - Validates all user IPs are within the interface subnet.
+  - Validates WG peers match db users by pubkey; checks IP consistency.
+  - Computes expected ipset state via `computeExpectedIPSets(db)`.
+  - Detects drift (missing/extra entries) via `reconcileIPSet`; populates `Deltas`.
+  - Output is sorted for deterministic assertions.
+
+CLI updates ([cli.go](cli.go)):
+- `cmdCheck` now uses `&RealSystem{}` and calls `Check(cfg, db, sys)`.
+- Root check added at entry: non-root gets a clear error and exit code 1.
+- Separate sections printed for hard errors vs ipset drift.
+
+CLI test updates ([cli_test.go](cli_test.go)):
+- `TestRun_CheckValid` replaced by `TestRun_CheckNotRoot` (verifies root rejection).
+- `TestRun_CheckMissingDir` skips when not root (correct; only reached past root gate).
+
+Test file: [check_test.go](check_test.go) — 13 table-driven cases covering the full check matrix.
 
 ---
 
 ## What Comes Next
 
-Proceed from **Phase 2** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Proceed from **Phase 4** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
-**Phase 2 — Parse Live System Output:**
-- Pure parsers for `wg show <iface> dump` output → `WGDump` struct.
-- Pure parsers for `ipset list <setname> -o save` output → ipset entry slices.
-- Interface address/subnet helper.
-- Real `SystemAdapter` implementation in `system.go` using `exec.Command`.
-- All parsers tested with inline fixture strings (no WireGuard/ipset required).
+**Phase 4 — Read-Only UX: `list` and `show`:**
+- Implement `wgman list [filter]` — calls `Check` internally; refuses on hard errors or drift.
+- Implement `wgman show` — maps WG peer pubkeys to user names; formats bytes and handshake duration.
+- Both need access to `WGDumpResult`; reuse the result from `Check`.
+- Formatting helpers: bytes → human-readable (`2.07Mb`); handshake age → `2d23h48m40s`.
 
-**Phase 3 — Full `wgman check`:**
-- Wire live system calls into the check path.
-- Compare live WireGuard peers against `db.yaml` (by public key and IP).
-- Compare live ipset entries against expected state derived from `db.yaml`.
-- Populate `CheckResult.Drift` and `CheckResult.Deltas`.
-- User-facing output and exit codes.
+**Phase 5 — `deploy`:**
+- Delta operation model already in place (`IpsetDeltaOp`, `CheckResult.Deltas`).
+- Implement apply routine: `ApplyDeltas(cfg, deltas, sys)`.
+- Wire `--dry-run` and `--yes` confirmation.
 
-Subsequent phases (4–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Subsequent phases (6–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ---
 
@@ -78,14 +106,19 @@ Subsequent phases (4–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IM
 | Unknown YAML fields | rejected via `KnownFields(true)` |
 | `"*"` in access | admin/all-access; must be sole entry |
 | IPs in db.yaml | plain IPv4, no `/32` suffix |
+| WG allowed-ips | `/32` normalized to plain IPv4 by `normalizeWGAllowedIP` |
 | Private keys | never written to `db.yaml` |
-| System calls | only via `SystemAdapter`; `exec.Command` lives in `system.go` |
+| System calls | only via `SystemAdapter`; `exec.Command` lives in `system_real.go` |
+| InterfaceSubnet | uses Go `net` package, not shell commands |
+| ipset comments | format `username -> vmname`; quoted in save output |
 | Test fakes | `fakeSystem` in `testhelpers_test.go` |
 | Testdata | `testdata/valid-offline/` |
+| Root check | in CLI layer only (`cmdCheck`); `Check()` itself is root-agnostic |
+| Check result order | `HardErrors`, `Drift`, `Deltas` all sorted before return |
 
 ---
 
 ## Suggested Skills
 
-- **`grilling`** — use if new design questions arise before implementing Phases 2–3 (e.g. parser error formats, subnet detection command).
+- **`grilling`** — use if new design questions arise before implementing Phases 4–5 (e.g. `show` output format, `list` column layout).
 - **`handoff`** — use again if work needs to be paused after further phases.
