@@ -36,28 +36,51 @@ type globalFlags struct {
 }
 
 func run(args []string) int {
-	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+	if len(args) == 0 {
 		fmt.Print(helpText)
 		return 0
 	}
 
-	cmd := args[0]
-	rest := args[1:]
-
-	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	// Build a single global FlagSet used for both passes.
+	fs := flag.NewFlagSet("wgman", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
 	gf := &globalFlags{}
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
 	fs.BoolVar(&gf.dryRun, "dry-run", false, "show planned changes without applying")
 
-	if err := fs.Parse(rest); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	// First pass: consume any flags that appear before the command name.
+	// fs.Parse stops at the first non-flag argument (the command).
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			fmt.Print(helpText)
+			return 0
+		}
 		return 2
 	}
 
+	remaining := fs.Args() // [command, args...]
+	if len(remaining) == 0 || remaining[0] == "help" || remaining[0] == "-h" || remaining[0] == "--help" {
+		fmt.Print(helpText)
+		return 0
+	}
+
+	cmd := remaining[0]
+
+	// Second pass: consume any flags that appear after the command name.
+	if err := fs.Parse(remaining[1:]); err != nil {
+		if err == flag.ErrHelp {
+			fmt.Print(helpText)
+			return 0
+		}
+		return 2
+	}
+
+	cmdArgs := fs.Args() // positional args for the command
+
 	switch cmd {
 	case "check":
-		return cmdCheck(gf, fs.Args())
+		return cmdCheck(gf, cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
 		return 2
