@@ -59,6 +59,8 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 	}
 
 	// Build pubkey lookups.
+	result.WGDump = wgDump
+
 	wgByPub := make(map[string]*WGPeer, len(wgDump.Peers))
 	for i := range wgDump.Peers {
 		wgByPub[wgDump.Peers[i].PublicKey] = &wgDump.Peers[i]

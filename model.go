@@ -37,10 +37,12 @@ type IpsetDeltaOp struct {
 // HardErrors holds issues that make the state unsafe or ambiguous.
 // Drift holds detected discrepancies between expected and live ipset state.
 // Deltas holds the concrete ipset operations needed to reconcile drift.
+// WGDump holds the parsed live WireGuard state; nil if not yet reached.
 type CheckResult struct {
 	HardErrors []string
 	Drift      []string
 	Deltas     []IpsetDeltaOp
+	WGDump     *WGDumpResult
 }
 
 // OK returns true when there are no hard errors and no drift.

@@ -1,0 +1,173 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"text/tabwriter"
+	"time"
+)
+
+// cmdList implements "wgman list [filter]".
+func cmdList(gf *globalFlags, args []string) int {
+	sys := &RealSystem{}
+	if !sys.IsRoot() {
+		fmt.Fprintln(os.Stderr, "error: wgman must be run as root")
+		return 1
+	}
+
+	cfg, err := LoadConfig(gf.configDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	db, err := LoadDB(gf.configDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	result := Check(cfg, db, sys)
+
+	filter := ""
+	if len(args) > 0 {
+		filter = args[0]
+	}
+	return runList(db, result, filter, os.Stdout)
+}
+
+// runList is the testable core of "list".
+// result must be OK() for output to be written; returns 1 on failure.
+func runList(db *DB, result *CheckResult, filter string, w io.Writer) int {
+	if !result.OK() {
+		printCheckErrors(result)
+		fmt.Fprintln(os.Stderr, "list: FAILED")
+		return 1
+	}
+
+	if filter != "" {
+		return runListUser(db, filter, w)
+	}
+
+	fmt.Fprintln(w, "Users:")
+	for _, name := range sortedKeys(db.Users) {
+		fmt.Fprintf(w, "  %-20s %s\n", name, db.Users[name].IP)
+	}
+
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "VMs:")
+	for _, name := range sortedKeys(db.VMs) {
+		fmt.Fprintf(w, "  %-20s %s\n", name, db.VMs[name])
+	}
+
+	return 0
+}
+
+// runListUser prints the access list for a single named user.
+func runListUser(db *DB, filter string, w io.Writer) int {
+	if _, ok := db.Users[filter]; !ok {
+		fmt.Fprintf(w, "error: user %q not found\n", filter)
+		return 1
+	}
+
+	vms := db.Access[filter]
+	fmt.Fprintf(w, "%s:\n", filter)
+	if len(vms) == 0 {
+		fmt.Fprintln(w, "  (none)")
+		return 0
+	}
+
+	sorted := make([]string, len(vms))
+	copy(sorted, vms)
+	sort.Strings(sorted)
+	for _, vm := range sorted {
+		fmt.Fprintf(w, "  %s\n", vm)
+	}
+	return 0
+}
+
+// cmdShow implements "wgman show".
+func cmdShow(gf *globalFlags, _ []string) int {
+	sys := &RealSystem{}
+	if !sys.IsRoot() {
+		fmt.Fprintln(os.Stderr, "error: wgman must be run as root")
+		return 1
+	}
+
+	cfg, err := LoadConfig(gf.configDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	db, err := LoadDB(gf.configDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	result := Check(cfg, db, sys)
+	return runShow(db, result, time.Now(), os.Stdout)
+}
+
+// runShow is the testable core of "show".
+// result must be OK() and result.WGDump non-nil; returns 1 on failure.
+func runShow(db *DB, result *CheckResult, now time.Time, w io.Writer) int {
+	if !result.OK() {
+		printCheckErrors(result)
+		fmt.Fprintln(os.Stderr, "show: FAILED")
+		return 1
+	}
+	if result.WGDump == nil {
+		fmt.Fprintln(os.Stderr, "show: no WireGuard data available")
+		return 1
+	}
+
+	dump := result.WGDump
+
+	// Build pubkey → username and name → peer lookup maps.
+	pubToUser := make(map[string]string, len(db.Users))
+	for name, u := range db.Users {
+		pubToUser[u.Pub] = name
+	}
+	nameToPeer := make(map[string]*WGPeer, len(dump.Peers))
+	for i := range dump.Peers {
+		if name := pubToUser[dump.Peers[i].PublicKey]; name != "" {
+			nameToPeer[name] = &dump.Peers[i]
+		}
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tIP\tENDPOINT\tRX\tTX\tLAST HANDSHAKE")
+
+	for _, name := range sortedKeys(db.Users) {
+		u := db.Users[name]
+		peer := nameToPeer[name]
+		if peer == nil {
+			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t-\n", name, u.IP)
+			continue
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			name,
+			u.IP,
+			endpointHost(peer.Endpoint),
+			formatBytes(peer.RxBytes),
+			formatBytes(peer.TxBytes),
+			formatHandshake(peer.LatestHandshake, now),
+		)
+	}
+	tw.Flush()
+	return 0
+}
+
+// sortedKeys returns the keys of a string-keyed map sorted alphabetically.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}

@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
-**Date:** 2026-07-02  
-**Status:** Phases 0–3 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
+**Date:** 2026-07-03  
+**Status:** Phases 0–4 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
 
 ---
 
@@ -75,24 +75,47 @@ CLI test updates ([cli_test.go](cli_test.go)):
 
 Test file: [check_test.go](check_test.go) — 13 table-driven cases covering the full check matrix.
 
+### Phase 4 — Read-Only UX: `list` and `show` (complete)
+
+New files:
+- [format.go](format.go) — formatting helpers:
+  - `formatBytes(n)` → `"2.07Mb"` style (B / Kb / Mb / Gb with 2 d.p.).
+  - `formatHandshake(ts, now)` → `"2d23h48m40s"` age string; `"never"` for zero.
+  - `endpointHost(endpoint)` → strips `:port`, passes `"(none)"` through.
+- [cmd_list_show.go](cmd_list_show.go) — `cmdList`, `runList`, `runListUser`, `cmdShow`, `runShow`, `sortedKeys` generic helper.
+  - `runList(db, result, filter, w)`: outputs alphabetically sorted Users + VMs sections; with filter shows named user's access list; returns 1 if `!result.OK()`.
+  - `runShow(db, result, now, w)`: tabwriter-aligned table `NAME IP ENDPOINT RX TX LAST HANDSHAKE`; endpoint without port; bytes and handshake formatted.
+  - Both refuse (exit 1) if check has hard errors or ipset drift.
+
+CLI updates ([cli.go](cli.go)):
+- `list` and `show` added to the command switch.
+- Inline error printing in `cmdCheck` replaced by shared `printCheckErrors(result)` helper (reused by `runList` and `runShow`).
+
+Model update ([model.go](model.go)):
+- `CheckResult.WGDump *WGDumpResult` added — populated by `Check()` after the WG dump is parsed; `nil` if check aborted before that point.
+
+Test files: [format_test.go](format_test.go), [cmd_list_show_test.go](cmd_list_show_test.go) — 20+ cases covering formatting helpers, list output, filter behavior, show column content, and refusal on bad check state.
+
 ---
 
 ## What Comes Next
 
-Proceed from **Phase 4** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
-
-**Phase 4 — Read-Only UX: `list` and `show`:**
-- Implement `wgman list [filter]` — calls `Check` internally; refuses on hard errors or drift.
-- Implement `wgman show` — maps WG peer pubkeys to user names; formats bytes and handshake duration.
-- Both need access to `WGDumpResult`; reuse the result from `Check`.
-- Formatting helpers: bytes → human-readable (`2.07Mb`); handshake age → `2d23h48m40s`.
+Proceed from **Phase 5** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 **Phase 5 — `deploy`:**
-- Delta operation model already in place (`IpsetDeltaOp`, `CheckResult.Deltas`).
-- Implement apply routine: `ApplyDeltas(cfg, deltas, sys)`.
-- Wire `--dry-run` and `--yes` confirmation.
+- `ApplyDeltas(cfg *Config, deltas []IpsetDeltaOp, sys SystemAdapter) error` — apply add/delete ipset operations.
+- `cmdDeploy` — loads config/db, calls `Check`, refuses on hard errors; proceeds if only drift; reports planned deltas, prompts (unless `--yes`), applies.
+- Support `--dry-run` (report without applying) and `--yes` (skip prompt).
+- Test: deploy refuses hard errors; no drift → no changes; dry-run reports only; apply add/delete deltas; `--yes` bypasses prompt.
 
-Subsequent phases (6–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+**Phase 6 — `mod`:**
+- Parse `+vm,-vm` comma-separated expressions.
+- Validate user and VM names.
+- Refuse on pre-existing drift.
+- Update `db.yaml` atomically.
+- Apply corresponding deltas.
+
+Subsequent phases (7–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ---
 
@@ -115,6 +138,11 @@ Subsequent phases (6–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IM
 | Testdata | `testdata/valid-offline/` |
 | Root check | in CLI layer only (`cmdCheck`); `Check()` itself is root-agnostic |
 | Check result order | `HardErrors`, `Drift`, `Deltas` all sorted before return |
+| `CheckResult.WGDump` | populated after successful WG dump parse; nil on early exit |
+| `list` filter | username → access list; blank → all users + all VMs |
+| `show` output | tabwriter table: NAME IP ENDPOINT RX TX LAST HANDSHAKE |
+| `sortedKeys` | generic helper in `cmd_list_show.go`; requires Go 1.18+ |
+| Flag ordering | two-pass `flag.FlagSet` parse: flags allowed before or after command |
 
 ---
 

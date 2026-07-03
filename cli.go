@@ -81,6 +81,10 @@ func run(args []string) int {
 	switch cmd {
 	case "check":
 		return cmdCheck(gf, cmdArgs)
+	case "list":
+		return cmdList(gf, cmdArgs)
+	case "show":
+		return cmdShow(gf, cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
 		return 2
@@ -108,7 +112,17 @@ func cmdCheck(gf *globalFlags, _ []string) int {
 	}
 
 	result := Check(cfg, db, sys)
+	printCheckErrors(result)
+	if !result.OK() {
+		fmt.Fprintln(os.Stderr, "check: FAILED")
+		return 1
+	}
+	fmt.Println("check: OK")
+	return 0
+}
 
+// printCheckErrors writes hard errors and ipset drift from result to stderr.
+func printCheckErrors(result *CheckResult) {
 	if len(result.HardErrors) > 0 {
 		fmt.Fprintln(os.Stderr, "check: hard errors:")
 		for _, e := range result.HardErrors {
@@ -121,12 +135,4 @@ func cmdCheck(gf *globalFlags, _ []string) int {
 			fmt.Fprintln(os.Stderr, "  -", d)
 		}
 	}
-
-	if !result.OK() {
-		fmt.Fprintln(os.Stderr, "check: FAILED")
-		return 1
-	}
-
-	fmt.Println("check: OK")
-	return 0
 }
