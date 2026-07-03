@@ -208,6 +208,13 @@ Acceptance:
 
 Goal: make db-driven access reconciliation functional, with dry-run and confirmation support.
 
+Review-1 pre-work before implementing this phase:
+
+- Tighten ipset parsing/checking so live set name, set type, and entry shape are validated before any deploy plan can be trusted. The all-access set should parse as `hash:net` entries with one IPv4/net value; the matrix set should parse as `hash:net,net` entries with two IPv4/net values. Malformed managed entries should be hard errors, not drift to delete.
+- Add command-level dependency injection before adding confirmation/apply behavior. Prefer a small app/deps struct carrying `SystemAdapter`, stdin, stdout, stderr, and clock/current-time hooks, so `deploy`, `mod`, `create`, and `remove` can be tested without root or real system commands.
+- Reject unexpected positional arguments for existing commands before adding more command handlers. `check` and `show` should accept no positional args; `list` should accept at most one filter.
+- Validate all user and VM IPs as IPv4 with `To4() != nil`, not just `net.ParseIP(...) != nil`.
+
 Functionality:
 
 - Implement delta operation model for ipset add/delete actions.
