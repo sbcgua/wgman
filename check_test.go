@@ -45,7 +45,7 @@ func buildCleanFakeSystem() *fakeSystem {
 		"ALICE_PUB=\t(none)\t192.168.1.100:50001\t10.8.0.10/32\t1748000000\t102400\t204800\toff\n" +
 		"BOB_PUB=\t(none)\t(none)\t10.8.0.15/32\t0\t0\t0\toff\n"
 	sys.ipsetResults["wg_allow_all"] =
-		"create wg_allow_all hash:net family inet\n" +
+		"create wg_allow_all hash:ip family inet\n" +
 			"add wg_allow_all 10.8.0.5\n"
 	sys.ipsetResults["wg_allow_matrix"] =
 		"create wg_allow_matrix hash:net,net family inet comment\n" +
@@ -171,7 +171,7 @@ func TestCheck_ExtraIPSetEntry(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	// Add a spurious entry to the all-access set.
 	sys.ipsetResults["wg_allow_all"] =
-		"create wg_allow_all hash:net family inet\n" +
+		"create wg_allow_all hash:ip family inet\n" +
 			"add wg_allow_all 10.8.0.5\n" +
 			"add wg_allow_all 10.8.0.99\n"
 
@@ -265,5 +265,77 @@ func TestCheck_InterfaceSubnetError(t *testing.T) {
 	result := Check(makeTestCfg(), makeTestDB(), sys)
 	if !anyContains(result.HardErrors, "get interface subnet") {
 		t.Errorf("expected subnet error, got: %v", result.HardErrors)
+	}
+}
+
+func TestCheck_AllAccessWrongSetType(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	// Replace the all-access set with the wrong type (hash:net instead of hash:ip).
+	sys.ipsetResults["wg_allow_all"] =
+		"create wg_allow_all hash:net family inet\n" +
+			"add wg_allow_all 10.8.0.5\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "hash:ip") {
+		t.Errorf("expected hard error about wrong set type, got: %v", result.HardErrors)
+	}
+	// Must be a hard error, not drift.
+	if len(result.Drift) != 0 {
+		t.Errorf("expected no drift when set type is wrong, got: %v", result.Drift)
+	}
+}
+
+func TestCheck_MatrixWrongSetType(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	// Replace the matrix set with the wrong type.
+	sys.ipsetResults["wg_allow_matrix"] =
+		"create wg_allow_matrix hash:ip family inet\n" +
+			"add wg_allow_matrix 10.8.0.10\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "hash:net,net") {
+		t.Errorf("expected hard error about wrong matrix set type, got: %v", result.HardErrors)
+	}
+	if len(result.Drift) != 0 {
+		t.Errorf("expected no drift when set type is wrong, got: %v", result.Drift)
+	}
+}
+
+func TestCheck_AllAccessInvalidEntryShape(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	// Add an IPv6 address as an all-access entry.
+	sys.ipsetResults["wg_allow_all"] =
+		"create wg_allow_all hash:ip family inet\n" +
+			"add wg_allow_all ::1\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "not a valid IPv4 address") {
+		t.Errorf("expected hard error for invalid all-access entry, got: %v", result.HardErrors)
+	}
+}
+
+func TestCheck_MatrixInvalidEntryShape(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	// Add a single-value entry (missing the second net) to the matrix set.
+	sys.ipsetResults["wg_allow_matrix"] =
+		"create wg_allow_matrix hash:net,net family inet comment\n" +
+			"add wg_allow_matrix 10.8.0.10\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "not two valid IPv4/net values") {
+		t.Errorf("expected hard error for invalid matrix entry, got: %v", result.HardErrors)
+	}
+}
+
+func TestCheck_AddLineSetNameMismatch(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	// Provide output where the add line references a different set name.
+	sys.ipsetResults["wg_allow_all"] =
+		"create wg_allow_all hash:ip family inet\n" +
+			"add other_set 10.8.0.5\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "parse ipset") {
+		t.Errorf("expected parse hard error for set name mismatch, got: %v", result.HardErrors)
 	}
 }

@@ -6,86 +6,97 @@ import (
 
 // ---- ipset parser tests ----
 
-func TestParseIPSetEntries_AllAccessSet(t *testing.T) {
-	input := "create wg_allow_all hash:net family inet hashsize 1024 maxelem 65536\n" +
+func TestParseIPSet_AllAccessSet(t *testing.T) {
+	input := "create wg_allow_all hash:ip family inet hashsize 1024 maxelem 65536\n" +
 		"add wg_allow_all 10.8.0.5\n"
-	entries, err := ParseIPSetEntries(input)
+	parsed, err := ParseIPSet(input)
 	if err != nil {
-		t.Fatalf("ParseIPSetEntries: %v", err)
+		t.Fatalf("ParseIPSet: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("entries count = %d, want 1", len(entries))
+	if parsed.SetName != "wg_allow_all" {
+		t.Errorf("SetName = %q, want wg_allow_all", parsed.SetName)
 	}
-	if entries[0].Entry != "10.8.0.5" {
-		t.Errorf("entry = %q, want 10.8.0.5", entries[0].Entry)
+	if parsed.SetType != "hash:ip" {
+		t.Errorf("SetType = %q, want hash:ip", parsed.SetType)
 	}
-	if entries[0].Comment != "" {
-		t.Errorf("comment = %q, want empty", entries[0].Comment)
+	if len(parsed.Entries) != 1 {
+		t.Fatalf("entries count = %d, want 1", len(parsed.Entries))
+	}
+	if parsed.Entries[0].Entry != "10.8.0.5" {
+		t.Errorf("entry = %q, want 10.8.0.5", parsed.Entries[0].Entry)
+	}
+	if parsed.Entries[0].Comment != "" {
+		t.Errorf("comment = %q, want empty", parsed.Entries[0].Comment)
 	}
 }
 
-func TestParseIPSetEntries_MatrixSet(t *testing.T) {
+func TestParseIPSet_MatrixSet(t *testing.T) {
 	input := "create wg_allow_matrix hash:net,net family inet hashsize 1024 maxelem 65536 comment\n" +
 		"add wg_allow_matrix 10.8.0.10,192.168.122.100 comment \"alice -> sandbox\"\n" +
 		"add wg_allow_matrix 10.8.0.15,192.168.122.100 comment \"bob -> sandbox\"\n" +
 		"add wg_allow_matrix 10.8.0.15,192.168.122.101 comment \"bob -> mailvm\"\n"
-	entries, err := ParseIPSetEntries(input)
+	parsed, err := ParseIPSet(input)
 	if err != nil {
-		t.Fatalf("ParseIPSetEntries: %v", err)
+		t.Fatalf("ParseIPSet: %v", err)
 	}
-	if len(entries) != 3 {
-		t.Fatalf("entries count = %d, want 3", len(entries))
+	if parsed.SetName != "wg_allow_matrix" {
+		t.Errorf("SetName = %q, want wg_allow_matrix", parsed.SetName)
 	}
-
-	if entries[0].Entry != "10.8.0.10,192.168.122.100" {
-		t.Errorf("entry[0] = %q", entries[0].Entry)
+	if parsed.SetType != "hash:net,net" {
+		t.Errorf("SetType = %q, want hash:net,net", parsed.SetType)
 	}
-	if entries[0].Comment != "alice -> sandbox" {
-		t.Errorf("comment[0] = %q, want alice -> sandbox", entries[0].Comment)
+	if len(parsed.Entries) != 3 {
+		t.Fatalf("entries count = %d, want 3", len(parsed.Entries))
 	}
-	if entries[2].Entry != "10.8.0.15,192.168.122.101" {
-		t.Errorf("entry[2] = %q", entries[2].Entry)
+	if parsed.Entries[0].Entry != "10.8.0.10,192.168.122.100" {
+		t.Errorf("entry[0] = %q", parsed.Entries[0].Entry)
 	}
-	if entries[2].Comment != "bob -> mailvm" {
-		t.Errorf("comment[2] = %q", entries[2].Comment)
+	if parsed.Entries[0].Comment != "alice -> sandbox" {
+		t.Errorf("comment[0] = %q, want alice -> sandbox", parsed.Entries[0].Comment)
+	}
+	if parsed.Entries[2].Entry != "10.8.0.15,192.168.122.101" {
+		t.Errorf("entry[2] = %q", parsed.Entries[2].Entry)
+	}
+	if parsed.Entries[2].Comment != "bob -> mailvm" {
+		t.Errorf("comment[2] = %q", parsed.Entries[2].Comment)
 	}
 }
 
-func TestParseIPSetEntries_Empty(t *testing.T) {
-	input := "create wg_allow_all hash:net family inet hashsize 1024 maxelem 65536\n"
-	entries, err := ParseIPSetEntries(input)
+func TestParseIPSet_Empty(t *testing.T) {
+	input := "create wg_allow_all hash:ip family inet hashsize 1024 maxelem 65536\n"
+	parsed, err := ParseIPSet(input)
 	if err != nil {
-		t.Fatalf("ParseIPSetEntries: %v", err)
+		t.Fatalf("ParseIPSet: %v", err)
 	}
-	if len(entries) != 0 {
-		t.Errorf("expected 0 entries, got %d", len(entries))
+	if len(parsed.Entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(parsed.Entries))
 	}
 }
 
-func TestParseIPSetEntries_EntryWithoutComment(t *testing.T) {
+func TestParseIPSet_EntryWithoutComment(t *testing.T) {
 	input := "create wg_allow_matrix hash:net,net family inet\n" +
 		"add wg_allow_matrix 10.8.0.10,192.168.122.100\n"
-	entries, err := ParseIPSetEntries(input)
+	parsed, err := ParseIPSet(input)
 	if err != nil {
-		t.Fatalf("ParseIPSetEntries: %v", err)
+		t.Fatalf("ParseIPSet: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("entries count = %d, want 1", len(entries))
+	if len(parsed.Entries) != 1 {
+		t.Fatalf("entries count = %d, want 1", len(parsed.Entries))
 	}
-	if entries[0].Comment != "" {
-		t.Errorf("comment = %q, want empty", entries[0].Comment)
+	if parsed.Entries[0].Comment != "" {
+		t.Errorf("comment = %q, want empty", parsed.Entries[0].Comment)
 	}
 }
 
-func TestParseIPSetEntries_CommentWithSpaces(t *testing.T) {
+func TestParseIPSet_CommentWithSpaces(t *testing.T) {
 	input := "create mySet hash:net,net family inet\n" +
 		"add mySet 10.0.0.1,10.0.0.2 comment \"user name -> vm name\"\n"
-	entries, err := ParseIPSetEntries(input)
+	parsed, err := ParseIPSet(input)
 	if err != nil {
-		t.Fatalf("ParseIPSetEntries: %v", err)
+		t.Fatalf("ParseIPSet: %v", err)
 	}
-	if entries[0].Comment != "user name -> vm name" {
-		t.Errorf("comment = %q, want %q", entries[0].Comment, "user name -> vm name")
+	if parsed.Entries[0].Comment != "user name -> vm name" {
+		t.Errorf("comment = %q, want %q", parsed.Entries[0].Comment, "user name -> vm name")
 	}
 }
 
@@ -109,13 +120,28 @@ var ipsetParseErrorTests = []struct {
 		input:   "create mySet hash:net family inet\nadd mySet 10.0.0.1 garbage here\n",
 		wantErr: "unexpected trailing content",
 	},
+	{
+		name:    "add before create",
+		input:   "add mySet 10.0.0.1\n",
+		wantErr: "add line before create line",
+	},
+	{
+		name:    "duplicate create line",
+		input:   "create mySet hash:ip family inet\ncreate mySet hash:ip family inet\n",
+		wantErr: "duplicate create line",
+	},
+	{
+		name:    "add set name mismatch",
+		input:   "create mySet hash:ip family inet\nadd otherSet 10.0.0.1\n",
+		wantErr: "does not match create set name",
+	},
 }
 
-func TestParseIPSetEntries_Errors(t *testing.T) {
+func TestParseIPSet_Errors(t *testing.T) {
 	for _, tc := range ipsetParseErrorTests {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHelper(t)
-			_, err := ParseIPSetEntries(tc.input)
+			_, err := ParseIPSet(tc.input)
 			h.assertError(err, tc.wantErr)
 		})
 	}

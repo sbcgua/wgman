@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
 **Date:** 2026-07-04  
-**Status:** Review-1 pre-work and Phase 5 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
+**Status:** Review-1 (all findings) and Phase 5 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
 
 ---
 
@@ -43,8 +43,11 @@ New files:
   - Tab-separated `wg show <iface> dump` format (server line + peer lines).
   - `normalizeWGAllowedIP`: strips `/32` → plain IPv4; rejects multiple allowed-ips.
   - `splitLines` shared utility (used by ipset parser too).
-- [parse_ipset.go](parse_ipset.go) — `ParseIPSetEntries(output)` → `[]IPSetEntry`.
-  - Skips `create` header lines; parses `add <setname> <entry> [comment "<comment>"]`.
+- [parse_ipset.go](parse_ipset.go) — `ParseIPSet(output)` → `*ParsedIPSet{SetName, SetType, Entries}`.
+  - Parses and records the `create` line's set name and type (previously skipped).
+  - Returns hard error if a `create` line is missing before `add` lines.
+  - Returns hard error if an `add` line names a different set than the `create` line.
+  - Returns hard error on duplicate `create` lines.
   - Handles quoted comments with spaces.
 - [system_real.go](system_real.go) — `RealSystem` struct implementing `SystemAdapter`.
   - `IsRoot()`: `os.Getuid() == 0`.
@@ -135,6 +138,14 @@ CLI updates:
 - `init-ipsets` added to help text and command switch in [cli.go](cli.go).
 - Missing-ipset hard errors in [check.go](check.go) now hint: `"run 'wgman init-ipsets' to create managed sets"`.
 
+### Review-1 HIGH Finding — Strict ipset parsing (complete)
+
+Applied before Phase 6 per the Review-1 HIGH finding:
+
+- **`ParseIPSet`** ([parse_ipset.go](parse_ipset.go)): replaces the old `ParseIPSetEntries`. Returns `*ParsedIPSet{SetName, SetType, Entries}`. Validates that add lines reference the same set name as the create line; rejects add-before-create and duplicate create lines. New parser error cases added to [parse_ipset_test.go](parse_ipset_test.go).
+- **Set type and entry shape validation** ([check.go](check.go)): `validateAllAccessIPSet` hard-errors if set type ≠ `hash:ip` or any entry is not a plain IPv4 address. `validateMatrixIPSet` hard-errors if set type ≠ `hash:net,net` or any entry is not two comma-separated IPv4/net values. Validation failures skip `reconcileIPSet` so malformed entries cannot become spurious delete deltas. `isValidIPv4OrCIDR` helper added.
+- **Test fixtures updated**: `buildCleanFakeSystem` and `TestCheck_ExtraIPSetEntry` in [check_test.go](check_test.go) updated to use `hash:ip` for the all-access set. Six new check tests added: `AllAccessWrongSetType`, `MatrixWrongSetType`, `AllAccessInvalidEntryShape`, `MatrixInvalidEntryShape`, `AddLineSetNameMismatch`, and the existing `MissingIPSet` hint test.
+
 ---
 
 ## What Comes Next
@@ -142,9 +153,6 @@ CLI updates:
 Proceed from **Phase 6** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 **Phase 6 — `deploy`:**
-
-Pre-work (Review-1, before this phase):
-- Tighten ipset parse/check so live set type and entry shape are validated before trusting deltas (see Review-1 High finding on `parse_ipset.go`).
 
 Functionality:
 - `ApplyDeltas(cfg *Config, deltas []IpsetDeltaOp, sys SystemAdapter) error` — apply add/delete ipset operations.
@@ -192,6 +200,9 @@ Subsequent phases (8–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IM
 | ipset creation | `-exist` flag; `hash:ip` for all-access, `hash:net,net comment` for matrix |
 | Missing ipset hint | check errors include `"run 'wgman init-ipsets' to create managed sets"` |
 | `IPSetCreate` ops | recorded as `"create:<name>:<type>:comment|nocomment"` in fakeSystem |
+| `ParseIPSet` | returns `*ParsedIPSet{SetName, SetType, Entries}`; validates set name and add-line consistency |
+| Set type enforcement | `hash:ip` required for all-access set; `hash:net,net` for matrix set — wrong type is a hard error |
+| Entry shape enforcement | all-access: single IPv4; matrix: two IPv4/net values — bad shapes are hard errors, never drift |
 
 ---
 

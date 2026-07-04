@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 )
 
 // Check performs the full validation: offline config/db checks followed by
@@ -107,12 +108,14 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		result.HardErrors = append(result.HardErrors,
 			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.All, err))
 	} else {
-		allEntries, err := ParseIPSetEntries(allRaw)
+		allParsed, err := ParseIPSet(allRaw)
 		if err != nil {
 			result.HardErrors = append(result.HardErrors,
 				fmt.Sprintf("parse ipset %q: %s", cfg.Sets.All, err))
+		} else if errs := validateAllAccessIPSet(cfg.Sets.All, allParsed); len(errs) > 0 {
+			result.HardErrors = append(result.HardErrors, errs...)
 		} else {
-			reconcileIPSet(cfg.Sets.All, allExpected, allEntries, result)
+			reconcileIPSet(cfg.Sets.All, allExpected, allParsed.Entries, result)
 		}
 	}
 
@@ -122,12 +125,14 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		result.HardErrors = append(result.HardErrors,
 			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.Matrix, err))
 	} else {
-		matrixEntries, err := ParseIPSetEntries(matrixRaw)
+		matrixParsed, err := ParseIPSet(matrixRaw)
 		if err != nil {
 			result.HardErrors = append(result.HardErrors,
 				fmt.Sprintf("parse ipset %q: %s", cfg.Sets.Matrix, err))
+		} else if errs := validateMatrixIPSet(cfg.Sets.Matrix, matrixParsed); len(errs) > 0 {
+			result.HardErrors = append(result.HardErrors, errs...)
 		} else {
-			reconcileIPSet(cfg.Sets.Matrix, matrixExpected, matrixEntries, result)
+			reconcileIPSet(cfg.Sets.Matrix, matrixExpected, matrixParsed.Entries, result)
 		}
 	}
 
@@ -206,4 +211,55 @@ func reconcileIPSet(setname string, expected map[string]string, live []IPSetEntr
 			})
 		}
 	}
+}
+
+// validateAllAccessIPSet checks that the live all-access set has the correct
+// type (hash:ip) and that all entries are plain IPv4 addresses.
+// Returns hard error strings; an empty slice means validation passed.
+func validateAllAccessIPSet(setname string, parsed *ParsedIPSet) []string {
+	var errs []string
+	if parsed.SetType != "hash:ip" {
+		errs = append(errs, fmt.Sprintf(
+			"ipset %q has type %q, expected hash:ip (run 'wgman init-ipsets' to recreate)",
+			setname, parsed.SetType))
+		return errs // can't trust entries if type is wrong
+	}
+	for _, e := range parsed.Entries {
+		ip := net.ParseIP(e.Entry)
+		if ip == nil || ip.To4() == nil {
+			errs = append(errs, fmt.Sprintf(
+				"ipset %q: all-access entry %q is not a valid IPv4 address", setname, e.Entry))
+		}
+	}
+	return errs
+}
+
+// validateMatrixIPSet checks that the live matrix set has the correct type
+// (hash:net,net) and that all entries are two comma-separated IPv4/net values.
+// Returns hard error strings; an empty slice means validation passed.
+func validateMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
+	var errs []string
+	if parsed.SetType != "hash:net,net" {
+		errs = append(errs, fmt.Sprintf(
+			"ipset %q has type %q, expected hash:net,net (run 'wgman init-ipsets' to recreate)",
+			setname, parsed.SetType))
+		return errs // can't trust entries if type is wrong
+	}
+	for _, e := range parsed.Entries {
+		parts := strings.SplitN(e.Entry, ",", 2)
+		if len(parts) != 2 || !isValidIPv4OrCIDR(parts[0]) || !isValidIPv4OrCIDR(parts[1]) {
+			errs = append(errs, fmt.Sprintf(
+				"ipset %q: matrix entry %q is not two valid IPv4/net values", setname, e.Entry))
+		}
+	}
+	return errs
+}
+
+// isValidIPv4OrCIDR returns true if s is a valid IPv4 address or IPv4 CIDR.
+func isValidIPv4OrCIDR(s string) bool {
+	if ip := net.ParseIP(s); ip != nil && ip.To4() != nil {
+		return true
+	}
+	_, ipNet, err := net.ParseCIDR(s)
+	return err == nil && ipNet.IP.To4() != nil
 }
