@@ -204,13 +204,51 @@ Acceptance:
 - `wgman list` and `wgman show` are useful on a correctly configured target host.
 - Unit tests do not require real WireGuard.
 
-## Phase 5: Access Deploy Slice: `deploy`
+## Phase 5: Ipset Setup Slice: `init-ipsets`
+
+Goal: make `wgman` able to create the dedicated ipsets it owns, without hiding setup inside ordinary deploy behavior.
+
+Functionality:
+
+- Implement `wgman init-ipsets`.
+- Load `config.yaml` from `--config-dir`.
+- Require root, like other system-mutating commands.
+- Create the configured all-access set as `hash:ip` with IPv4 family.
+- Create the configured matrix set as `hash:net,net` with IPv4 family and comments enabled.
+- Use idempotent creation behavior, equivalent to `ipset create ... -exist`, so the command is safe to rerun.
+- Do not populate entries; access entries remain the responsibility of `deploy`, `mod`, `create`, and `remove`.
+- Update `check` error messaging for missing ipsets to hint that `wgman init-ipsets` can create them.
+
+Implementation notes:
+
+- Add a system adapter method such as `IPSetCreate(setname, setType string, withComment bool) error`, or two explicit methods if that is clearer.
+- Keep set definitions canonical in Go plus `config.yaml`; do not duplicate them in shell scripts.
+- `deploy` should remain conservative: it should refuse missing sets by default instead of silently creating them.
+- A reboot restoration flow can run `wgman init-ipsets` followed by `wgman deploy --yes`.
+
+Tests for this phase:
+
+- `init-ipsets` creates the all-access set as `hash:ip`;
+- `init-ipsets` creates the matrix set as `hash:net,net`;
+- creation is idempotent / uses the fake adapter in idempotent mode;
+- command requires root;
+- command loads set names from `config.yaml`;
+- missing config returns an error;
+- `check` missing-ipset output includes an `init-ipsets` hint.
+
+Acceptance:
+
+- A target host can run `sudo wgman init-ipsets` before `check`/`deploy`.
+- Re-running `sudo wgman init-ipsets` is safe.
+- No access entries are added by this command.
+
+## Phase 6: Access Deploy Slice: `deploy`
 
 Goal: make db-driven access reconciliation functional, with dry-run and confirmation support.
 
 Review-1 pre-work before implementing this phase:
 
-- Tighten ipset parsing/checking so live set name, set type, and entry shape are validated before any deploy plan can be trusted. The all-access set should parse as `hash:net` entries with one IPv4/net value; the matrix set should parse as `hash:net,net` entries with two IPv4/net values. Malformed managed entries should be hard errors, not drift to delete.
+- Tighten ipset parsing/checking so live set name, set type, and entry shape are validated before any deploy plan can be trusted. The all-access set should parse as `hash:ip` entries with one IPv4 value; the matrix set should parse as `hash:net,net` entries with two IPv4/net values. Malformed managed entries should be hard errors, not drift to delete.
 - Add command-level dependency injection before adding confirmation/apply behavior. Prefer a small app/deps struct carrying `SystemAdapter`, stdin, stdout, stderr, and clock/current-time hooks, so `deploy`, `mod`, `create`, and `remove` can be tested without root or real system commands.
 - Reject unexpected positional arguments for existing commands before adding more command handlers. `check` and `show` should accept no positional args; `list` should accept at most one filter.
 - Validate all user and VM IPs as IPv4 with `To4() != nil`, not just `net.ParseIP(...) != nil`.
@@ -244,7 +282,7 @@ Acceptance:
 - Admins can manually edit access in `db.yaml`, run `wgman deploy --dry-run`, then run `wgman deploy` to reconcile ipsets.
 - Unit tests verify command decisions and fake adapter calls.
 
-## Phase 6: Modify Access Slice: `mod`
+## Phase 7: Modify Access Slice: `mod`
 
 Goal: make controlled access edits possible through the CLI.
 
@@ -279,7 +317,7 @@ Acceptance:
 - `mod` can add/remove VM access for an existing user on a clean system.
 - The updated db and live ipsets remain consistent after the command.
 
-## Phase 7: Create User Slice: `create`
+## Phase 8: Create User Slice: `create`
 
 Goal: make new user provisioning functional.
 
@@ -318,7 +356,7 @@ Acceptance:
 - A new user can be created on a clean target host and receives a generated client config.
 - Tests prove no private key is persisted to `db.yaml`.
 
-## Phase 8: Remove User Slice: `remove`
+## Phase 9: Remove User Slice: `remove`
 
 Goal: make user removal functional and guarded by confirmation/dry-run behavior.
 
@@ -351,7 +389,7 @@ Acceptance:
 
 - Existing users can be removed safely from db, WireGuard, and managed access sets.
 
-## Phase 9: Polish, Packaging, And Documentation Alignment
+## Phase 10: Polish, Packaging, And Documentation Alignment
 
 Goal: make the command coherent as a user-facing tool.
 
@@ -374,7 +412,7 @@ Acceptance:
 - `go test ./...`, `go vet ./...`, and `gofmt` pass.
 - README and spec do not contradict implemented flags or command names.
 
-## Phase 10: Real Host Smoke Checks And Final Build
+## Phase 11: Real Host Smoke Checks And Final Build
 
 Goal: verify the binary on a controlled Linux host with real WireGuard/ipset state.
 
@@ -393,6 +431,7 @@ sudo install -m 0755 wgman /usr/local/sbin/wgman
 Smoke test on a non-production host or VM:
 
 ```sh
+sudo wgman init-ipsets
 sudo wgman check
 sudo wgman list
 sudo wgman show
@@ -421,8 +460,9 @@ Acceptance:
 3. Live output parsers.
 4. Full `check`.
 5. `list` and `show`.
-6. `deploy`.
-7. `mod`.
-8. `create`.
-9. `remove`.
-10. Polish and real-host verification.
+6. `init-ipsets`.
+7. `deploy`.
+8. `mod`.
+9. `create`.
+10. `remove`.
+11. Polish and real-host verification.
