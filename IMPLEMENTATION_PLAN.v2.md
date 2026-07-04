@@ -288,6 +288,12 @@ Acceptance:
 
 Goal: make controlled access edits possible through the CLI.
 
+Review-2 pre-work before implementing this phase:
+
+- Complete the remaining strict-ipset check gap: compare `ParsedIPSet.SetName` with the configured set name inside the all-access and matrix validators, and add regression tests for wrong `create` set names. The parser currently validates `create`/`add` internal consistency, but not that the parsed set is the configured set being checked.
+- Reject duplicate entries inside each user's `access` list during validation, and ensure the `mod` writer normalizes access lists into deterministic duplicate-free order.
+- Introduce an atomic `db.yaml` write helper before modifying access. Prefer writing a temporary file in the same config directory and renaming it into place; tests should cover dry-run no-write behavior, validation failure no-write behavior, and deterministic YAML output.
+
 Functionality:
 
 - Implement `wgman mod <name> <+res1,-res2...>`.

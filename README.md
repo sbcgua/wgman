@@ -2,7 +2,7 @@
 
 `wgman` is a planned command-line tool for managing WireGuard users and their access to internal VM resources through WireGuard peers and ipset-based firewall rules.
 
-Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md). The implementation plan is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md). The implementation plan is in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ## Development Prerequisites
 
@@ -74,6 +74,8 @@ See [docs/SPEC.md](docs/SPEC.md) for the expected file structure.
 
 ## Basic Commands
 
+Implemented commands at the current stage:
+
 Show help:
 
 ```sh
@@ -99,6 +101,12 @@ Show WireGuard peer status with user names:
 sudo wgman show
 ```
 
+Create the managed ipsets defined in `config.yaml`:
+
+```sh
+sudo wgman init-ipsets
+```
+
 Preview access reconciliation:
 
 ```sh
@@ -110,6 +118,14 @@ Apply access reconciliation from `db.yaml` to managed ipsets:
 ```sh
 sudo wgman deploy
 ```
+
+Skip confirmation prompts where supported:
+
+```sh
+sudo wgman deploy --yes
+```
+
+Commands planned by the spec but not implemented yet:
 
 Create a user with an auto-assigned IP:
 
@@ -135,12 +151,6 @@ Remove a user:
 sudo wgman remove alice
 ```
 
-Skip confirmation prompts where supported:
-
-```sh
-sudo wgman deploy --yes
-```
-
 Use an alternate config directory for testing or staging:
 
 ```sh
@@ -152,6 +162,7 @@ sudo wgman --config-dir ./fixtures check
 Use a non-production Linux host or VM first.
 
 ```sh
+sudo wgman init-ipsets
 sudo wgman check
 sudo wgman list
 sudo wgman show
