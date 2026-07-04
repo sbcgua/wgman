@@ -166,8 +166,6 @@ Skip confirmation prompts where supported:
 sudo wgman deploy --yes
 ```
 
-Commands planned by the spec but not implemented yet:
-
 Create a user with an auto-assigned IP:
 
 ```sh

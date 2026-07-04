@@ -24,6 +24,36 @@ func ApplyDeltas(deltas []IpsetDeltaOp, sys SystemAdapter) error {
 	return nil
 }
 
+// ApplyDeltasTracked applies deltas and returns the operations that completed
+// before any error. Callers can invert those operations for best-effort rollback.
+func ApplyDeltasTracked(deltas []IpsetDeltaOp, sys SystemAdapter) ([]IpsetDeltaOp, error) {
+	applied := make([]IpsetDeltaOp, 0, len(deltas))
+	for _, d := range deltas {
+		if d.Add {
+			if err := sys.IPSetAdd(d.Set, d.Entry, d.Comment); err != nil {
+				return applied, err
+			}
+		} else {
+			if err := sys.IPSetDel(d.Set, d.Entry); err != nil {
+				return applied, err
+			}
+		}
+		applied = append(applied, d)
+	}
+	return applied, nil
+}
+
+// InvertDeltas returns inverse operations in reverse order for rollback.
+func InvertDeltas(deltas []IpsetDeltaOp) []IpsetDeltaOp {
+	inverted := make([]IpsetDeltaOp, 0, len(deltas))
+	for i := len(deltas) - 1; i >= 0; i-- {
+		d := deltas[i]
+		d.Add = !d.Add
+		inverted = append(inverted, d)
+	}
+	return inverted
+}
+
 // printDeltas writes a human-readable summary of planned ipset operations to w.
 func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
 	for _, d := range deltas {

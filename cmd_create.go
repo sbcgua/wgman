@@ -1,13 +1,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+var writeClientConfig = writeClientConfigNoOverwrite
 
 type createArgs struct {
 	Name   string
@@ -91,6 +95,10 @@ func parseCreateAccessList(s string) ([]string, error) {
 }
 
 func cmdCreate(gf *globalFlags, args []string, app *App) int {
+	if gf.dryRun {
+		fmt.Fprintln(app.Stderr, "error: create does not support --dry-run")
+		return 2
+	}
 	if !app.Sys.IsRoot() {
 		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1
@@ -169,27 +177,56 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		printDeltas(deltas, app.Stdout)
 	}
 
-	// The durable state is updated before live system state so a failed system
-	// operation is visible as drift and can be reconciled with deploy.
-	if err := SaveDBAtomic(gf.configDir, updated); err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-	if err := writeClientConfigNoOverwrite(clientConfigPath, clientConfig); err != nil {
+	if err := writeClientConfig(clientConfigPath, clientConfig); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 	if err := app.Sys.WGSetPeer(cfg.Interface, pubKey, clientIP); err != nil {
+		_ = os.Remove(clientConfigPath)
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
-	if err := ApplyDeltas(deltas, app.Sys); err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
+
+	appliedDeltas, err := ApplyDeltasTracked(deltas, app.Sys)
+	if err != nil {
+		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, appliedDeltas, app.Sys)
+		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
+		return 1
+	}
+
+	if err := SaveDBAtomic(gf.configDir, updated); err != nil {
+		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, appliedDeltas, app.Sys)
+		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
 
 	fmt.Fprintf(app.Stdout, "create: created %s\n", parsed.Name)
 	return 0
+}
+
+func rollbackCreateLiveState(iface, pubKey, clientConfigPath string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
+	var errs []string
+	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := sys.WGDelPeer(iface, pubKey); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := os.Remove(clientConfigPath); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, err.Error())
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func printApplyAndRollbackError(w io.Writer, err, rollbackErr error) {
+	if rollbackErr != nil {
+		fmt.Fprintf(w, "error: %v (rollback failed: %v)\n", err, rollbackErr)
+		return
+	}
+	fmt.Fprintln(w, "error:", err)
 }
 
 func planCreateUser(cfg *Config, db *DB, args *createArgs, pubKey, subnet string) (*DB, []IpsetDeltaOp, string, error) {

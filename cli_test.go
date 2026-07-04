@@ -138,3 +138,16 @@ func TestRunApp_ModExpressionMayStartWithDash(t *testing.T) {
 		t.Errorf("expected delete op for alice sandbox, got: %v", sys.appliedOps)
 	}
 }
+
+func TestRunApp_CreateRejectsDryRun(t *testing.T) {
+	app := makeFakeApp(true)
+	var errBuf strings.Builder
+	app.Stderr = &errBuf
+	code := runApp([]string{"create", "--dry-run", "alice"}, app)
+	if code != 2 {
+		t.Fatalf("create --dry-run exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errBuf.String(), "does not support --dry-run") {
+		t.Errorf("expected unsupported dry-run error, got: %s", errBuf.String())
+	}
+}

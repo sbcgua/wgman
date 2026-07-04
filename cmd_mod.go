@@ -174,12 +174,13 @@ func diffExpectedIPSet(setname string, oldExpected, newExpected map[string]strin
 			})
 		}
 	}
-	for entry := range oldExpected {
+	for entry, comment := range oldExpected {
 		if _, ok := newExpected[entry]; !ok {
 			deltas = append(deltas, IpsetDeltaOp{
-				Set:   setname,
-				Entry: entry,
-				Add:   false,
+				Set:     setname,
+				Entry:   entry,
+				Comment: comment,
+				Add:     false,
 			})
 		}
 	}

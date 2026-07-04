@@ -181,13 +181,32 @@ func SaveDBAtomic(dir string, db *DB) error {
 		_ = tmp.Close()
 		return fmt.Errorf("chmod temporary db.yaml: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temporary db.yaml: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temporary db.yaml: %w", err)
 	}
 	if err := os.Rename(tmpName, filepath.Join(dir, "db.yaml")); err != nil {
 		return fmt.Errorf("replace db.yaml: %w", err)
 	}
+	if err := syncDir(dir); err != nil {
+		return err
+	}
 	cleanup = false
+	return nil
+}
+
+func syncDir(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("open config directory for sync: %w", err)
+	}
+	defer f.Close()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("sync config directory: %w", err)
+	}
 	return nil
 }
 

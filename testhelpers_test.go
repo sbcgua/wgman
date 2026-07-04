@@ -69,6 +69,8 @@ type fakeSystem struct {
 	ipsetCreateErr error
 	ipsetAddErr    error
 	ipsetDelErr    error
+	wgSetErr       error
+	wgDelErr       error
 	appliedOps     []string // records IPSetCreate/Add/Del and WGSet/Del calls
 	genKeyResult   string
 	genKeyErr      error
@@ -130,11 +132,17 @@ func (f *fakeSystem) IPSetDel(setname, entry string) error {
 }
 
 func (f *fakeSystem) WGSetPeer(iface, pubkey, allowedIP string) error {
+	if f.wgSetErr != nil {
+		return f.wgSetErr
+	}
 	f.appliedOps = append(f.appliedOps, "wgset:"+iface+":"+pubkey+":"+allowedIP)
 	return nil
 }
 
 func (f *fakeSystem) WGDelPeer(iface, pubkey string) error {
+	if f.wgDelErr != nil {
+		return f.wgDelErr
+	}
 	f.appliedOps = append(f.appliedOps, "wgdel:"+iface+":"+pubkey)
 	return nil
 }

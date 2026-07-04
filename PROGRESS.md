@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
 **Date:** 2026-07-04  
-**Status:** Phase 9 complete; `go test ./...` and `go vet ./...` pass (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
+**Status:** Review-3 pre-work for Phase 10 complete; Phase 10 polish itself has not been started. `go test ./...` and `go vet ./...` pass (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
 
 ---
 
@@ -236,7 +236,7 @@ New files:
   - Reads `user.conf.template` from the config directory and writes `<user>.vpn.conf` in the current directory with mode `0600`.
   - Refuses to overwrite an existing generated client config.
   - Never writes the private key to `db.yaml`.
-  - Writes updated `db.yaml` atomically through `SaveDBAtomic`, then applies live state changes. The code comments document that durable intended state is written before live system state so failures become visible/reconcilable as drift.
+  - Writes the generated client config, applies live WireGuard/ipset state, then commits updated `db.yaml` atomically. Post-live failures trigger best-effort rollback so WireGuard hard drift is not left behind silently.
   - Adds the WireGuard peer through `WGSetPeer` and applies access ipset deltas through `ApplyDeltas`.
 - [cmd_create_test.go](cmd_create_test.go) — tests cover:
   - optional argument parsing and `/32` IP normalization;
@@ -273,9 +273,9 @@ New files:
   - Supports `--dry-run`; dry-run prints the plan and does not write `db.yaml` or call system adapters.
   - Prompts by default; `--yes` bypasses the prompt.
   - Confirmation rejection exits cleanly without writing `db.yaml` or applying system changes.
-  - Removes the user and access entries from `db.yaml` through `SaveDBAtomic`.
-  - Applies corresponding ipset delete deltas through `ApplyDeltas`.
+  - Applies corresponding ipset delete deltas through tracked delta application.
   - Removes the WireGuard peer through `WGDelPeer`.
+  - Removes the user and access entries from `db.yaml` through `SaveDBAtomic` after live removal succeeds. Final DB commit failure triggers best-effort WireGuard/ipset rollback.
   - Does not remove generated client config files.
 - [cmd_remove_test.go](cmd_remove_test.go) — tests cover:
   - remove planning and delete deltas;
@@ -291,6 +291,34 @@ New files:
 
 CLI update:
 - `remove` added to the command switch in [cli.go](cli.go). It was already present in help text.
+
+Verification:
+- `env GOCACHE=/tmp/go-build go test ./...`
+- `env GOCACHE=/tmp/go-build go vet ./...`
+- `env GOCACHE=/tmp/go-build go build -o /tmp/wgman .`
+
+---
+
+### Review-3 Pre-Work For Phase 10 (complete)
+
+Implemented only the pre-work block from Phase 10; Phase 10 polish/documentation review remains next.
+
+- **Consistency-preserving create/remove policy**:
+  - [cmd_create.go](cmd_create.go): `create` now writes the generated client config, applies `WGSetPeer`, applies access ipset deltas with tracking, then commits `db.yaml`. If `WGSetPeer`, ipset application, or final DB save fails after earlier side effects, it performs best-effort rollback: invert applied ipset deltas, remove the WireGuard peer, and remove the generated config.
+  - [cmd_remove.go](cmd_remove.go): `remove` now applies ipset delete deltas with tracking, removes the WireGuard peer, then commits `db.yaml`. If `WGDelPeer` fails, it restores applied ipset deltas. If final DB save fails after live removal, it restores the WireGuard peer and applied ipset deltas.
+  - [cmd_deploy.go](cmd_deploy.go): added `ApplyDeltasTracked` and `InvertDeltas` for rollback-aware command paths.
+  - [cmd_mod.go](cmd_mod.go): delete deltas now preserve comments so inverse rollback can re-add matrix entries with their original comments.
+- **Failure-injection tests**:
+  - [testhelpers_test.go](testhelpers_test.go): `fakeSystem` can now inject `WGSetPeer` and `WGDelPeer` errors.
+  - [cmd_create_test.go](cmd_create_test.go): added tests for client-config write failure and `WGSetPeer` failure; both assert no `db.yaml` change and no unrecoverable live work.
+  - [cmd_remove_test.go](cmd_remove_test.go): added a `WGDelPeer` failure test that asserts `db.yaml` is unchanged and prior ipset deletes are rolled back.
+- **Unsupported flags**:
+  - [cmd_create.go](cmd_create.go): `create --dry-run` is rejected with exit code 2.
+  - [cli_test.go](cli_test.go) and [cmd_create_test.go](cmd_create_test.go): regression coverage added for `create --dry-run`.
+- **README status**:
+  - [README.md](README.md): removed the stale “planned but not implemented yet” wording for `create`, `mod`, and `remove`.
+- **DB write durability**:
+  - [config.go](config.go): `SaveDBAtomic` now syncs the temporary file before rename and syncs the config directory after rename.
 
 Verification:
 - `env GOCACHE=/tmp/go-build go test ./...`
@@ -348,7 +376,7 @@ Phase 11 is fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v
 | Set type enforcement | `hash:ip` required for all-access set; `hash:net,net` for matrix set — wrong type is a hard error |
 | Entry shape enforcement | all-access: single IPv4; matrix: two IPv4/net values — bad shapes are hard errors, never drift |
 | Parsed ipset name enforcement | `ParsedIPSet.SetName` must match the configured set name being checked |
-| `db.yaml` writes | `SaveDBAtomic` writes a same-directory temp file, chmods `0600`, then renames into place |
+| `db.yaml` writes | `SaveDBAtomic` writes a same-directory temp file, chmods `0600`, syncs it, renames into place, then syncs the config directory |
 | Access list writes | normalized to sorted, duplicate-free lists before writing; empty access owners are omitted |
 | `mod` drift policy | refuses any hard error or ipset drift before changing `db.yaml` |
 | `mod` absent removal | removing access that is not present is a no-op |
@@ -356,9 +384,9 @@ Phase 11 is fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v
 | `create` IP allocation | picks highest existing in-subnet user IP plus one, inside the interface subnet |
 | Generated client configs | written as `<user>.vpn.conf` in the current directory, mode `0600`, no overwrite |
 | `create` private keys | generated private key is written only to the client config, never to `db.yaml` |
-| `create` apply order | write intended state/config first, then `WGSetPeer`, then ipset deltas |
+| `create` apply order | write generated config, then `WGSetPeer`, then ipset deltas, then commit `db.yaml`; failures trigger best-effort rollback |
 | `remove` confirmation | prompts by default; `--yes` bypasses; `--dry-run` never prompts |
-| `remove` apply order | write intended DB state first, then ipset delete deltas, then `WGDelPeer` |
+| `remove` apply order | ipset delete deltas, then `WGDelPeer`, then commit `db.yaml`; failures trigger best-effort rollback |
 | Generated client config removal | `remove` does not delete `<user>.vpn.conf` files |
 
 ---

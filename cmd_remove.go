@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -70,22 +71,38 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 		}
 	}
 
-	// Write intended state first; any later failure is visible to check/deploy.
-	if err := SaveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-	if err := ApplyDeltas(plan.Deltas, app.Sys); err != nil {
+	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, app.Sys)
+	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 	if err := app.Sys.WGDelPeer(cfg.Interface, plan.Pub); err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
+		rollbackErr := ApplyDeltas(InvertDeltas(appliedDeltas), app.Sys)
+		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
+		return 1
+	}
+	if err := SaveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
+		rollbackErr := rollbackRemoveLiveState(cfg.Interface, plan.Pub, plan.IP, appliedDeltas, app.Sys)
+		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
 
 	fmt.Fprintf(app.Stdout, "remove: removed %s\n", plan.User)
 	return 0
+}
+
+func rollbackRemoveLiveState(iface, pubKey, ip string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
+	var errs []string
+	if err := sys.WGSetPeer(iface, pubKey, ip); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {

@@ -180,6 +180,18 @@ func TestCreate_RefusesPreExistingDrift(t *testing.T) {
 	}
 }
 
+func TestCreate_RejectsDryRun(t *testing.T) {
+	sys := newFakeSystem()
+	app, _, stderr := makeDeployApp(sys, "")
+	code := cmdCreate(&globalFlags{configDir: "testdata/valid-offline", dryRun: true}, []string{"carol"}, app)
+	if code != 2 {
+		t.Fatalf("create --dry-run exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "does not support --dry-run") {
+		t.Errorf("expected unsupported dry-run error, got: %s", stderr.String())
+	}
+}
+
 func TestCreate_RefusesExistingClientConfig(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -195,6 +207,84 @@ func TestCreate_RefusesExistingClientConfig(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "already exists") {
 		t.Errorf("expected already exists error, got: %s", stderr.String())
+	}
+}
+
+func TestCreate_ClientConfigWriteFailureDoesNotWriteDBOrApply(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+
+	oldWriteClientConfig := writeClientConfig
+	writeClientConfig = func(_, _ string) error {
+		return os.ErrPermission
+	}
+	t.Cleanup(func() { writeClientConfig = oldWriteClientConfig })
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	app, _, stderr := makeDeployApp(sys, "")
+	code := cmdCreate(&globalFlags{configDir: dir}, []string{"carol", "mailvm"}, app)
+	if code == 0 {
+		t.Fatal("create should fail when client config write fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after client config write failure")
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no live ops after client config write failure, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
+	}
+}
+
+func TestCreate_WGSetFailureRemovesConfigAndDoesNotWriteDB(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	sys.wgSetErr = os.ErrPermission
+	app, _, stderr := makeDeployApp(sys, "")
+	code := cmdCreate(&globalFlags{configDir: dir}, []string{"carol", "mailvm"}, app)
+	if code == 0 {
+		t.Fatal("create should fail when WGSetPeer fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after WGSetPeer failure")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "carol.vpn.conf")); !os.IsNotExist(err) {
+		t.Fatalf("generated config should be removed after WGSetPeer failure, stat err: %v", err)
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no recorded live ops after WGSetPeer failure, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
 	}
 }
 
