@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
 **Date:** 2026-07-04  
-**Status:** Review-2 pre-work and Phase 7 complete; `go test ./...` passes (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
+**Status:** Phase 8 complete; `go test ./...` and `go vet ./...` pass (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
 
 ---
 
@@ -218,20 +218,62 @@ Verification:
 
 ---
 
+### Phase 8 — `create` (complete)
+
+New files:
+- [cmd_create.go](cmd_create.go) — `cmdCreate`, create argument parsing, IP allocation, client config rendering, no-overwrite config writing, and create planning.
+  - Implements `wgman create <name> [ip] [res1,res2...]`.
+  - Requires root.
+  - Calls `Check` first and refuses both hard errors and pre-existing ipset drift.
+  - Parses optional IP versus comma-separated access list:
+    - `create carol` auto-allocates the next user IP;
+    - `create carol 10.8.0.20` uses the supplied IPv4;
+    - `create carol 10.8.0.20/32` normalizes to `10.8.0.20`;
+    - `create carol sandbox,mailvm` treats the second arg as access and auto-allocates IP.
+  - Auto-allocates from the interface subnet using the highest existing in-subnet user IP plus one.
+  - Rejects duplicate/case-conflicting usernames, duplicate IPs, duplicate public keys, supplied IPs outside the interface subnet, unknown access resources, and invalid generated public keys.
+  - Generates WireGuard private/public keys through `SystemAdapter`.
+  - Reads `user.conf.template` from the config directory and writes `<user>.vpn.conf` in the current directory with mode `0600`.
+  - Refuses to overwrite an existing generated client config.
+  - Never writes the private key to `db.yaml`.
+  - Writes updated `db.yaml` atomically through `SaveDBAtomic`, then applies live state changes. The code comments document that durable intended state is written before live system state so failures become visible/reconcilable as drift.
+  - Adds the WireGuard peer through `WGSetPeer` and applies access ipset deltas through `ApplyDeltas`.
+- [cmd_create_test.go](cmd_create_test.go) — tests cover:
+  - optional argument parsing and `/32` IP normalization;
+  - invalid create argument forms;
+  - auto-IP allocation and tiny subnet rejection;
+  - supplied IP/access planning;
+  - duplicate and case-conflicting usernames;
+  - unknown VM/resource rejection;
+  - duplicate IP, duplicate public key, and outside-subnet rejection;
+  - template substitution;
+  - refusal on pre-existing drift;
+  - refusal to overwrite an existing `<user>.vpn.conf`;
+  - successful DB write, generated client config, expected `wg set`, expected ipset add, and private-key absence from `db.yaml`.
+
+CLI update:
+- `create` added to the command switch in [cli.go](cli.go). It was already present in help text.
+
+Verification:
+- `env GOCACHE=/tmp/go-build go test ./...`
+- `env GOCACHE=/tmp/go-build go vet ./...`
+- `env GOCACHE=/tmp/go-build go build -o /tmp/wgman .`
+
+---
+
 ## What Comes Next
 
-Proceed from **Phase 8** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Proceed from **Phase 9** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
-**Phase 8 — `create`:**
-- Parse `wgman create <name> [ip] [res1,res2...]`.
-- Auto-allocate IPs from the interface subnet when not supplied.
-- Generate WireGuard key material through `SystemAdapter`.
-- Render `<user>.vpn.conf` from `user.conf.template`.
-- Add the user/access to `db.yaml` atomically.
-- Add the WireGuard peer and relevant ipset entries through existing deploy/apply routines.
+**Phase 9 — `remove`:**
+- Implement `wgman remove <name>`.
+- Show deletion summary before applying.
+- Support `--yes` and `--dry-run`.
 - Refuse on pre-existing hard errors or drift.
+- Remove the user and access entries from `db.yaml` atomically.
+- Remove the WireGuard peer and corresponding ipset entries through existing system/deploy routines.
 
-Subsequent phases (9–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Subsequent phases (10–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ---
 
@@ -273,6 +315,11 @@ Subsequent phases (9–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IM
 | Access list writes | normalized to sorted, duplicate-free lists before writing; empty access owners are omitted |
 | `mod` drift policy | refuses any hard error or ipset drift before changing `db.yaml` |
 | `mod` absent removal | removing access that is not present is a no-op |
+| `create` IP parsing | supplied IPv4 accepted as plain IP or `/32`; stored as plain IPv4 |
+| `create` IP allocation | picks highest existing in-subnet user IP plus one, inside the interface subnet |
+| Generated client configs | written as `<user>.vpn.conf` in the current directory, mode `0600`, no overwrite |
+| `create` private keys | generated private key is written only to the client config, never to `db.yaml` |
+| `create` apply order | write intended state/config first, then `WGSetPeer`, then ipset deltas |
 
 ---
 

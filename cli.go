@@ -121,6 +121,8 @@ func runApp(args []string, app *App) int {
 		return cmdDeploy(gf, cmdArgs, app)
 	case "mod":
 		return cmdMod(gf, cmdArgs, app)
+	case "create":
+		return cmdCreate(gf, cmdArgs, app)
 	default:
 		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
 		return 2
