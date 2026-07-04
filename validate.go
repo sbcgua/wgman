@@ -17,7 +17,7 @@ func ValidateOffline(cfg *Config, db *DB) *CheckResult {
 
 	// Validate that all user IPs are valid IPv4 addresses.
 	for name, u := range db.Users {
-		if net.ParseIP(u.IP) == nil {
+		if ip := net.ParseIP(u.IP); ip == nil || ip.To4() == nil {
 			result.HardErrors = append(result.HardErrors,
 				fmt.Sprintf("user %q has invalid ip %q", name, u.IP))
 		}
@@ -25,7 +25,7 @@ func ValidateOffline(cfg *Config, db *DB) *CheckResult {
 
 	// Validate that all VM IPs are valid IPv4 addresses.
 	for name, ip := range db.VMs {
-		if net.ParseIP(ip) == nil {
+		if parsed := net.ParseIP(ip); parsed == nil || parsed.To4() == nil {
 			result.HardErrors = append(result.HardErrors,
 				fmt.Sprintf("vm %q has invalid ip %q", name, ip))
 		}

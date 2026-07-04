@@ -229,6 +229,24 @@ func TestValidateOffline_InvalidUserIP(t *testing.T) {
 	}
 }
 
+func TestValidateOffline_IPv6UserIP(t *testing.T) {
+	cfg, db := mustLoadTestdata(t)
+	db.Users["alice"] = UserEntry{IP: "::1", Pub: db.Users["alice"].Pub}
+	result := ValidateOffline(cfg, db)
+	if !anyContains(result.HardErrors, "invalid ip") {
+		t.Errorf("expected hard error for IPv6 user ip, got: %v", result.HardErrors)
+	}
+}
+
+func TestValidateOffline_IPv6VMIP(t *testing.T) {
+	cfg, db := mustLoadTestdata(t)
+	db.VMs["sandbox"] = "2001:db8::1"
+	result := ValidateOffline(cfg, db)
+	if !anyContains(result.HardErrors, "invalid ip") {
+		t.Errorf("expected hard error for IPv6 vm ip, got: %v", result.HardErrors)
+	}
+}
+
 func TestValidateOffline_InvalidVMIP(t *testing.T) {
 	cfg, db := mustLoadTestdata(t)
 	db.VMs["sandbox"] = "not-an-ip"

@@ -3,63 +3,65 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"text/tabwriter"
 	"time"
 )
 
 // cmdList implements "wgman list [filter]".
-func cmdList(gf *globalFlags, args []string) int {
-	sys := &RealSystem{}
-	if !sys.IsRoot() {
-		fmt.Fprintln(os.Stderr, "error: wgman must be run as root")
+func cmdList(gf *globalFlags, args []string, app *App) int {
+	if len(args) > 1 {
+		fmt.Fprintln(app.Stderr, "error: list takes at most one positional argument")
+		return 2
+	}
+	if !app.Sys.IsRoot() {
+		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1
 	}
 
 	cfg, err := LoadConfig(gf.configDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
 	db, err := LoadDB(gf.configDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	result := Check(cfg, db, sys)
+	result := Check(cfg, db, app.Sys)
 
 	filter := ""
 	if len(args) > 0 {
 		filter = args[0]
 	}
-	return runList(db, result, filter, os.Stdout)
+	return runList(db, result, filter, app.Stdout, app.Stderr)
 }
 
 // runList is the testable core of "list".
 // result must be OK() for output to be written; returns 1 on failure.
-func runList(db *DB, result *CheckResult, filter string, w io.Writer) int {
+func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Writer) int {
 	if !result.OK() {
-		printCheckErrors(result)
-		fmt.Fprintln(os.Stderr, "list: FAILED")
+		printCheckErrors(result, stderr)
+		fmt.Fprintln(stderr, "list: FAILED")
 		return 1
 	}
 
 	if filter != "" {
-		return runListUser(db, filter, w)
+		return runListUser(db, filter, stdout)
 	}
 
-	fmt.Fprintln(w, "Users:")
+	fmt.Fprintln(stdout, "Users:")
 	for _, name := range sortedKeys(db.Users) {
-		fmt.Fprintf(w, "  %-20s %s\n", name, db.Users[name].IP)
+		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.Users[name].IP)
 	}
 
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "VMs:")
+	fmt.Fprintln(stdout, "")
+	fmt.Fprintln(stdout, "VMs:")
 	for _, name := range sortedKeys(db.VMs) {
-		fmt.Fprintf(w, "  %-20s %s\n", name, db.VMs[name])
+		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
 	return 0
@@ -89,39 +91,42 @@ func runListUser(db *DB, filter string, w io.Writer) int {
 }
 
 // cmdShow implements "wgman show".
-func cmdShow(gf *globalFlags, _ []string) int {
-	sys := &RealSystem{}
-	if !sys.IsRoot() {
-		fmt.Fprintln(os.Stderr, "error: wgman must be run as root")
+func cmdShow(gf *globalFlags, args []string, app *App) int {
+	if len(args) > 0 {
+		fmt.Fprintln(app.Stderr, "error: show takes no positional arguments")
+		return 2
+	}
+	if !app.Sys.IsRoot() {
+		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1
 	}
 
 	cfg, err := LoadConfig(gf.configDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
 	db, err := LoadDB(gf.configDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	result := Check(cfg, db, sys)
-	return runShow(db, result, time.Now(), os.Stdout)
+	result := Check(cfg, db, app.Sys)
+	return runShow(db, result, app.Now(), app.Stdout, app.Stderr)
 }
 
 // runShow is the testable core of "show".
 // result must be OK() and result.WGDump non-nil; returns 1 on failure.
-func runShow(db *DB, result *CheckResult, now time.Time, w io.Writer) int {
+func runShow(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Writer) int {
 	if !result.OK() {
-		printCheckErrors(result)
-		fmt.Fprintln(os.Stderr, "show: FAILED")
+		printCheckErrors(result, stderr)
+		fmt.Fprintln(stderr, "show: FAILED")
 		return 1
 	}
 	if result.WGDump == nil {
-		fmt.Fprintln(os.Stderr, "show: no WireGuard data available")
+		fmt.Fprintln(stderr, "show: no WireGuard data available")
 		return 1
 	}
 
@@ -139,7 +144,7 @@ func runShow(db *DB, result *CheckResult, now time.Time, w io.Writer) int {
 		}
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tIP\tENDPOINT\tRX\tTX\tLAST HANDSHAKE")
 
 	for _, name := range sortedKeys(db.Users) {

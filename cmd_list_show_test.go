@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func makeCleanCheckResult() *CheckResult {
 func TestRunList_NoFilter(t *testing.T) {
 	db := makeTestDB()
 	var buf strings.Builder
-	code := runList(db, makeCleanCheckResult(), "", &buf)
+	code := runList(db, makeCleanCheckResult(), "", &buf, io.Discard)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -42,7 +43,7 @@ func TestRunList_NoFilter(t *testing.T) {
 func TestRunList_UsersSortedAlphabetically(t *testing.T) {
 	db := makeTestDB()
 	var buf strings.Builder
-	runList(db, makeCleanCheckResult(), "", &buf)
+	runList(db, makeCleanCheckResult(), "", &buf, io.Discard)
 	out := buf.String()
 	adminPos := strings.Index(out, "admin")
 	alicePos := strings.Index(out, "alice")
@@ -55,7 +56,7 @@ func TestRunList_UsersSortedAlphabetically(t *testing.T) {
 func TestRunList_WithFilter(t *testing.T) {
 	db := makeTestDB()
 	var buf strings.Builder
-	code := runList(db, makeCleanCheckResult(), "alice", &buf)
+	code := runList(db, makeCleanCheckResult(), "alice", &buf, io.Discard)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -74,7 +75,7 @@ func TestRunList_WithFilter(t *testing.T) {
 func TestRunList_FilterAdminStar(t *testing.T) {
 	db := makeTestDB()
 	var buf strings.Builder
-	code := runList(db, makeCleanCheckResult(), "admin", &buf)
+	code := runList(db, makeCleanCheckResult(), "admin", &buf, io.Discard)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -89,7 +90,7 @@ func TestRunList_FilterNoAccess(t *testing.T) {
 	// User with no access entries.
 	db.Users["newguy"] = UserEntry{IP: "10.8.0.20", Pub: "NEWGUY_PUB="}
 	var buf strings.Builder
-	code := runList(db, makeCleanCheckResult(), "newguy", &buf)
+	code := runList(db, makeCleanCheckResult(), "newguy", &buf, io.Discard)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -102,7 +103,7 @@ func TestRunList_FilterNoAccess(t *testing.T) {
 func TestRunList_FilterUnknownUser(t *testing.T) {
 	db := makeTestDB()
 	var buf strings.Builder
-	code := runList(db, makeCleanCheckResult(), "nobody", &buf)
+	code := runList(db, makeCleanCheckResult(), "nobody", &buf, io.Discard)
 	if code == 0 {
 		t.Error("expected non-zero code for unknown user filter")
 	}
@@ -115,7 +116,7 @@ func TestRunList_RefusesOnHardErrors(t *testing.T) {
 	db := makeTestDB()
 	result := &CheckResult{HardErrors: []string{"some hard error"}}
 	var buf strings.Builder
-	code := runList(db, result, "", &buf)
+	code := runList(db, result, "", &buf, io.Discard)
 	if code == 0 {
 		t.Error("expected non-zero code on check failure")
 	}
@@ -128,7 +129,7 @@ func TestRunList_RefusesOnDrift(t *testing.T) {
 	db := makeTestDB()
 	result := &CheckResult{Drift: []string{"ipset drift detected"}}
 	var buf strings.Builder
-	code := runList(db, result, "", &buf)
+	code := runList(db, result, "", &buf, io.Discard)
 	if code == 0 {
 		t.Error("expected non-zero code when drift present")
 	}
@@ -143,7 +144,7 @@ func TestRunShow_Basic(t *testing.T) {
 	now := time.Unix(1748001000, 0)
 
 	var buf strings.Builder
-	code := runShow(db, result, now, &buf)
+	code := runShow(db, result, now, &buf, io.Discard)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -160,7 +161,7 @@ func TestRunShow_EndpointWithoutPort(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()
 	var buf strings.Builder
-	runShow(db, result, time.Now(), &buf)
+	runShow(db, result, time.Now(), &buf, io.Discard)
 	out := buf.String()
 
 	// alice's endpoint is "192.168.1.100:50001"; port should be stripped
@@ -176,7 +177,7 @@ func TestRunShow_ByteFormatting(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()
 	var buf strings.Builder
-	runShow(db, result, time.Now(), &buf)
+	runShow(db, result, time.Now(), &buf, io.Discard)
 	out := buf.String()
 
 	// alice: RxBytes=102400 (100*1024) → "100.00Kb", TxBytes=204800 (200*1024) → "200.00Kb"
@@ -194,7 +195,7 @@ func TestRunShow_HandshakeFormatting(t *testing.T) {
 	// alice LatestHandshake = 1748000000; now = 1748001000 → 1000s = 16m40s
 	now := time.Unix(1748001000, 0)
 	var buf strings.Builder
-	runShow(db, result, now, &buf)
+	runShow(db, result, now, &buf, io.Discard)
 	out := buf.String()
 
 	if !strings.Contains(out, "16m40s") {
@@ -209,7 +210,7 @@ func TestRunShow_SortedByName(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()
 	var buf strings.Builder
-	runShow(db, result, time.Now(), &buf)
+	runShow(db, result, time.Now(), &buf, io.Discard)
 	out := buf.String()
 
 	adminPos := strings.Index(out, "admin")
@@ -224,7 +225,7 @@ func TestRunShow_RefusesOnHardErrors(t *testing.T) {
 	db := makeTestDB()
 	result := &CheckResult{HardErrors: []string{"something wrong"}}
 	var buf strings.Builder
-	code := runShow(db, result, time.Now(), &buf)
+	code := runShow(db, result, time.Now(), &buf, io.Discard)
 	if code == 0 {
 		t.Error("expected non-zero code on check failure")
 	}
@@ -240,7 +241,7 @@ func TestRunShow_RefusesOnDrift(t *testing.T) {
 		WGDump: makeCleanCheckResult().WGDump,
 	}
 	var buf strings.Builder
-	code := runShow(db, result, time.Now(), &buf)
+	code := runShow(db, result, time.Now(), &buf, io.Discard)
 	if code == 0 {
 		t.Error("expected non-zero code when drift present")
 	}

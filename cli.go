@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"time"
 )
 
 const helpText = `wgman - wireguard and resource access manager
@@ -35,15 +37,42 @@ type globalFlags struct {
 	dryRun    bool
 }
 
+// App holds all injectable dependencies for command handlers.
+// main() is the only place that constructs an App backed by real OS resources.
+type App struct {
+	Sys    SystemAdapter
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	Now    func() time.Time
+}
+
+// newRealApp returns an App wired to real OS dependencies.
+func newRealApp() *App {
+	return &App{
+		Sys:    &RealSystem{},
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Now:    time.Now,
+	}
+}
+
+// run is the entry point called from main; it builds a real App and delegates.
 func run(args []string) int {
+	return runApp(args, newRealApp())
+}
+
+// runApp is the testable core of the CLI; app supplies all OS dependencies.
+func runApp(args []string, app *App) int {
 	if len(args) == 0 {
-		fmt.Print(helpText)
+		fmt.Fprint(app.Stdout, helpText)
 		return 0
 	}
 
 	// Build a single global FlagSet used for both passes.
 	fs := flag.NewFlagSet("wgman", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs.SetOutput(app.Stderr)
 	gf := &globalFlags{}
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
@@ -53,7 +82,7 @@ func run(args []string) int {
 	// fs.Parse stops at the first non-flag argument (the command).
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Print(helpText)
+			fmt.Fprint(app.Stdout, helpText)
 			return 0
 		}
 		return 2
@@ -61,7 +90,7 @@ func run(args []string) int {
 
 	remaining := fs.Args() // [command, args...]
 	if len(remaining) == 0 || remaining[0] == "help" || remaining[0] == "-h" || remaining[0] == "--help" {
-		fmt.Print(helpText)
+		fmt.Fprint(app.Stdout, helpText)
 		return 0
 	}
 
@@ -70,7 +99,7 @@ func run(args []string) int {
 	// Second pass: consume any flags that appear after the command name.
 	if err := fs.Parse(remaining[1:]); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Print(helpText)
+			fmt.Fprint(app.Stdout, helpText)
 			return 0
 		}
 		return 2
@@ -80,59 +109,62 @@ func run(args []string) int {
 
 	switch cmd {
 	case "check":
-		return cmdCheck(gf, cmdArgs)
+		return cmdCheck(gf, cmdArgs, app)
 	case "list":
-		return cmdList(gf, cmdArgs)
+		return cmdList(gf, cmdArgs, app)
 	case "show":
-		return cmdShow(gf, cmdArgs)
+		return cmdShow(gf, cmdArgs, app)
 	default:
-		fmt.Fprintf(os.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
+		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
 		return 2
 	}
 }
 
 // cmdCheck implements "wgman check".
-func cmdCheck(gf *globalFlags, _ []string) int {
-	sys := &RealSystem{}
-	if !sys.IsRoot() {
-		fmt.Fprintln(os.Stderr, "error: wgman must be run as root")
+func cmdCheck(gf *globalFlags, args []string, app *App) int {
+	if len(args) > 0 {
+		fmt.Fprintln(app.Stderr, "error: check takes no positional arguments")
+		return 2
+	}
+	if !app.Sys.IsRoot() {
+		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1
 	}
 
 	cfg, err := LoadConfig(gf.configDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
 	db, err := LoadDB(gf.configDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	result := Check(cfg, db, sys)
-	printCheckErrors(result)
+	result := Check(cfg, db, app.Sys)
+	printCheckErrors(result, app.Stderr)
 	if !result.OK() {
-		fmt.Fprintln(os.Stderr, "check: FAILED")
+		fmt.Fprintln(app.Stderr, "check: FAILED")
 		return 1
 	}
-	fmt.Println("check: OK")
+	fmt.Fprintln(app.Stdout, "check: OK")
 	return 0
 }
 
-// printCheckErrors writes hard errors and ipset drift from result to stderr.
-func printCheckErrors(result *CheckResult) {
+// printCheckErrors writes hard errors and ipset drift from result to w.
+func printCheckErrors(result *CheckResult, w io.Writer) {
 	if len(result.HardErrors) > 0 {
-		fmt.Fprintln(os.Stderr, "check: hard errors:")
+		fmt.Fprintln(w, "check: hard errors:")
 		for _, e := range result.HardErrors {
-			fmt.Fprintln(os.Stderr, "  -", e)
+			fmt.Fprintln(w, "  -", e)
 		}
 	}
 	if len(result.Drift) > 0 {
-		fmt.Fprintln(os.Stderr, "check: ipset drift:")
+		fmt.Fprintln(w, "check: ipset drift:")
 		for _, d := range result.Drift {
-			fmt.Fprintln(os.Stderr, "  -", d)
+			fmt.Fprintln(w, "  -", d)
 		}
 	}
 }

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"io"
 	"os"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestRun_Help(t *testing.T) {
@@ -51,5 +54,58 @@ func TestRun_CheckMissingDir(t *testing.T) {
 	code := run([]string{"check", "--config-dir", "testdata/nonexistent"})
 	if code == 0 {
 		t.Errorf("check with missing dir should return non-zero")
+	}
+}
+
+// ---- argument validation tests (use runApp with fake app) ----
+
+// makeFakeApp returns an App with a non-root fake system and discarded I/O,
+// suitable for testing argument validation without real system access.
+func makeFakeApp(root bool) *App {
+	sys := newFakeSystem()
+	sys.isRoot = root
+	return &App{
+		Sys:    sys,
+		Stdin:  strings.NewReader(""),
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+		Now:    func() time.Time { return time.Unix(0, 0) },
+	}
+}
+
+func TestRunApp_CheckRejectsPositionalArgs(t *testing.T) {
+	app := makeFakeApp(false)
+	code := runApp([]string{"check", "alice"}, app)
+	if code == 0 {
+		t.Error("check with positional arg should return non-zero")
+	}
+}
+
+func TestRunApp_ShowRejectsPositionalArgs(t *testing.T) {
+	app := makeFakeApp(false)
+	code := runApp([]string{"show", "alice"}, app)
+	if code == 0 {
+		t.Error("show with positional arg should return non-zero")
+	}
+}
+
+func TestRunApp_ListRejectsMultiplePositionalArgs(t *testing.T) {
+	app := makeFakeApp(false)
+	code := runApp([]string{"list", "alice", "bob"}, app)
+	if code == 0 {
+		t.Error("list with two positional args should return non-zero")
+	}
+}
+
+func TestRunApp_CheckNotRoot(t *testing.T) {
+	app := makeFakeApp(false) // non-root
+	var errBuf strings.Builder
+	app.Stderr = &errBuf
+	code := runApp([]string{"check", "--config-dir", "testdata/valid-offline"}, app)
+	if code == 0 {
+		t.Error("check as non-root should return non-zero")
+	}
+	if !strings.Contains(errBuf.String(), "root") {
+		t.Errorf("expected root error message, got: %s", errBuf.String())
 	}
 }
