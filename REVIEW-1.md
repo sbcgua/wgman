@@ -10,12 +10,12 @@ References: [parse_ipset.go](parse_ipset.go:16), [parse_ipset.go](parse_ipset.go
 
 `ParseIPSetEntries` currently skips `create` lines and stores only raw `add` entries. It does not validate the live set name, set type, family, or entry shape. That means a malformed managed entry, a wrong set type, or an unexpected `add` line can be interpreted as ordinary drift and turned into a delete delta.
 
-This matters before phase 5 because `deploy` will trust the `CheckResult.Deltas`. The spec's unit-test strategy says malformed managed entries should be rejected, and the check command is expected to verify the configured all/matrix sets. Before implementing `deploy`, make ipset parsing/checking return hard errors for:
+This matters before phase 6 because `deploy` will trust the `CheckResult.Deltas`. The spec's unit-test strategy says malformed managed entries should be rejected, and the check command is expected to verify the configured all/matrix sets. Before implementing `deploy`, make ipset parsing/checking return hard errors for:
 
-- all-access set not being the expected single-net style set;
+- all-access set not being the expected `hash:ip` set;
 - matrix set not being the expected net,net style set;
 - `add` lines for the wrong set name;
-- all-access entries that are not valid IPv4/net values;
+- all-access entries that are not valid IPv4 values;
 - matrix entries that are not exactly two valid IPv4/net values.
 
 ### Medium: command-level code is not injectable enough for phase 5+
@@ -57,17 +57,23 @@ References: [system_real.go](system_real.go:38), [system_real.go](system_real.go
 
 The overall direction is good. The project has the right broad shape: typed YAML loading, pure validation/parsing functions, a system adapter, structured check results, deterministic tests, and read-only command helpers. This matches the spec and the vertical-slice plan.
 
-The main concern is not the amount of implemented functionality; it is the boundary between checked live state and future deploy actions. Phase 5 should not start applying `CheckResult.Deltas` until ipset parsing validates the managed sets strongly enough, and command handlers are injectable enough to test root-level behavior without real system tools.
+The main concern is not the amount of implemented functionality; it is the boundary between checked live state and future system-mutating actions. The newly planned `init-ipsets` phase can be implemented before full deploy reconciliation, but command-level testability should be improved as part of that phase because it is the first new mutating command. Full ipset drift/delta hardening must happen before `deploy` starts applying `CheckResult.Deltas`.
 
-## Suggested Pre-Phase-5 Work
+## Suggested Follow-Up Work
+
+Before the new phase 5 (`init-ipsets`):
+
+1. Add command-level dependency injection for system adapter and I/O, or implement it as part of `init-ipsets`.
+2. Add strict positional argument validation for implemented commands.
+3. Change user/VM IP validation to require IPv4.
+
+Before phase 6 (`deploy`):
 
 1. Tighten ipset parse/check behavior as described above.
-2. Add command-level dependency injection for system adapter and I/O.
-3. Add strict positional argument validation for implemented commands.
-4. Change user/VM IP validation to require IPv4.
-5. Add tests for the above before starting `deploy`.
+2. Ensure live set name, set type, and entry shape are hard-validated before trusting deltas.
+3. Add tests for deploy using fake system calls, fake confirmation input, and captured output.
 
-I added these as explicit Review-1 pre-work hints in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+I added corresponding Review-1 hints in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ## Verification
 

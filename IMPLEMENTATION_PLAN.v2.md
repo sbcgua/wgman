@@ -222,6 +222,8 @@ Functionality:
 Implementation notes:
 
 - Add a system adapter method such as `IPSetCreate(setname, setType string, withComment bool) error`, or two explicit methods if that is clearer.
+- This is a good phase to introduce command-level dependency injection for `SystemAdapter`, stdin, stdout, stderr, and clock hooks if it was not already done during Review-1 cleanup.
+- Also reject unexpected positional arguments for already implemented commands before adding `init-ipsets` command parsing.
 - Keep set definitions canonical in Go plus `config.yaml`; do not duplicate them in shell scripts.
 - `deploy` should remain conservative: it should refuse missing sets by default instead of silently creating them.
 - A reboot restoration flow can run `wgman init-ipsets` followed by `wgman deploy --yes`.
