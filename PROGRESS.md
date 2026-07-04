@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
 **Date:** 2026-07-04  
-**Status:** Phase 8 complete; `go test ./...` and `go vet ./...` pass (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
+**Status:** Phase 9 complete; `go test ./...` and `go vet ./...` pass (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
 
 ---
 
@@ -261,19 +261,56 @@ Verification:
 
 ---
 
+### Phase 9 — `remove` (complete)
+
+New files:
+- [cmd_remove.go](cmd_remove.go) — `cmdRemove`, `planRemoveUser`, and remove-plan output helpers.
+  - Implements `wgman remove <name>`.
+  - Requires root.
+  - Calls `Check` first and refuses both hard errors and pre-existing ipset drift.
+  - Validates the requested user exists and uses that user's public key from `db.yaml` for WireGuard peer removal.
+  - Prints a deletion summary including username, IP, and current access.
+  - Supports `--dry-run`; dry-run prints the plan and does not write `db.yaml` or call system adapters.
+  - Prompts by default; `--yes` bypasses the prompt.
+  - Confirmation rejection exits cleanly without writing `db.yaml` or applying system changes.
+  - Removes the user and access entries from `db.yaml` through `SaveDBAtomic`.
+  - Applies corresponding ipset delete deltas through `ApplyDeltas`.
+  - Removes the WireGuard peer through `WGDelPeer`.
+  - Does not remove generated client config files.
+- [cmd_remove_test.go](cmd_remove_test.go) — tests cover:
+  - remove planning and delete deltas;
+  - missing user rejection;
+  - refusal on pre-existing drift;
+  - dry-run no-write/no-apply behavior;
+  - confirmation rejection no-write/no-apply behavior;
+  - `--yes` applying without prompt;
+  - actual DB user/access removal;
+  - expected matrix ipset delete operations;
+  - expected all-access ipset delete operation for admin users;
+  - expected WireGuard peer delete operation.
+
+CLI update:
+- `remove` added to the command switch in [cli.go](cli.go). It was already present in help text.
+
+Verification:
+- `env GOCACHE=/tmp/go-build go test ./...`
+- `env GOCACHE=/tmp/go-build go vet ./...`
+- `env GOCACHE=/tmp/go-build go build -o /tmp/wgman .`
+
+---
+
 ## What Comes Next
 
-Proceed from **Phase 9** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Proceed from **Phase 10** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
-**Phase 9 — `remove`:**
-- Implement `wgman remove <name>`.
-- Show deletion summary before applying.
-- Support `--yes` and `--dry-run`.
-- Refuse on pre-existing hard errors or drift.
-- Remove the user and access entries from `db.yaml` atomically.
-- Remove the WireGuard peer and corresponding ipset entries through existing system/deploy routines.
+**Phase 10 — Polish, Packaging, And Documentation Alignment:**
+- Review help text and command result messages.
+- Ensure final command lines report success/failure consistently.
+- Ensure exit codes are consistent.
+- Align README commands with implementation.
+- Add missing examples only if not already covered by [docs/SPEC.md](docs/SPEC.md).
 
-Subsequent phases (10–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Phase 11 is fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ---
 
@@ -320,6 +357,9 @@ Subsequent phases (10–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](I
 | Generated client configs | written as `<user>.vpn.conf` in the current directory, mode `0600`, no overwrite |
 | `create` private keys | generated private key is written only to the client config, never to `db.yaml` |
 | `create` apply order | write intended state/config first, then `WGSetPeer`, then ipset deltas |
+| `remove` confirmation | prompts by default; `--yes` bypasses; `--dry-run` never prompts |
+| `remove` apply order | write intended DB state first, then ipset delete deltas, then `WGDelPeer` |
+| Generated client config removal | `remove` does not delete `<user>.vpn.conf` files |
 
 ---
 
