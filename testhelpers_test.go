@@ -67,6 +67,8 @@ type fakeSystem struct {
 	ipsetResults   map[string]string
 	ipsetErrs      map[string]error
 	ipsetCreateErr error
+	ipsetAddErr    error
+	ipsetDelErr    error
 	appliedOps     []string // records IPSetCreate/Add/Del and WGSet/Del calls
 	genKeyResult   string
 	genKeyErr      error
@@ -112,11 +114,17 @@ func (f *fakeSystem) IPSetCreate(setname, setType string, withComment bool) erro
 }
 
 func (f *fakeSystem) IPSetAdd(setname, entry, comment string) error {
+	if f.ipsetAddErr != nil {
+		return f.ipsetAddErr
+	}
 	f.appliedOps = append(f.appliedOps, "add:"+setname+":"+entry+":"+comment)
 	return nil
 }
 
 func (f *fakeSystem) IPSetDel(setname, entry string) error {
+	if f.ipsetDelErr != nil {
+		return f.ipsetDelErr
+	}
 	f.appliedOps = append(f.appliedOps, "del:"+setname+":"+entry)
 	return nil
 }

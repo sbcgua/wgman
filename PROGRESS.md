@@ -148,16 +148,38 @@ Applied before Phase 6 per the Review-1 HIGH finding:
 
 ---
 
+### Phase 6 — `deploy` (complete)
+
+New files:
+- [cmd_deploy.go](cmd_deploy.go) — `ApplyDeltas`, `printDeltas`, `cmdDeploy`.
+  - `ApplyDeltas(deltas []IpsetDeltaOp, sys SystemAdapter) error` — iterates deltas and calls `sys.IPSetAdd` or `sys.IPSetDel`; returns first error.
+  - `printDeltas(deltas, w)` — formats each delta as `add <set> <entry>  # <comment>` or `del <set> <entry>`.
+  - `cmdDeploy` — requires root; loads config/db; calls `Check`; refuses on hard errors (`!result.Clean()`); reports "no changes needed" when `len(Deltas) == 0`; prints planned changes; honours `--dry-run` (print plan, no apply) and `--yes` (skip prompt); otherwise prompts `"Apply these changes? [y/N] "` reading from `app.Stdin`; applies via `ApplyDeltas`; reports applied count.
+- [cmd_deploy_test.go](cmd_deploy_test.go) — 11 test cases:
+  - rejects positional arguments (exit 2);
+  - requires root;
+  - refuses on hard errors;
+  - clean state reports "no changes needed";
+  - `--dry-run` prints plan but applies nothing;
+  - `--yes` applies without prompt;
+  - confirmation "y" applies;
+  - confirmation "n" aborts cleanly;
+  - applied add delta recorded in fake adapter;
+  - applied delete delta recorded in fake adapter;
+  - apply error propagated (exit 1).
+
+CLI update ([cli.go](cli.go)):
+- `deploy` added to command switch.
+
+Test helper update ([testhelpers_test.go](testhelpers_test.go)):
+- `ipsetAddErr error` and `ipsetDelErr error` fields added to `fakeSystem`.
+- `IPSetAdd` and `IPSetDel` return these errors when set.
+
+---
+
 ## What Comes Next
 
-Proceed from **Phase 6** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
-
-**Phase 6 — `deploy`:**
-
-Functionality:
-- `ApplyDeltas(cfg *Config, deltas []IpsetDeltaOp, sys SystemAdapter) error` — apply add/delete ipset operations.
-- `cmdDeploy` — loads config/db, calls `Check`, refuses on hard errors; proceeds if only drift; reports planned deltas, prompts (unless `--yes`), applies.
-- Support `--dry-run` (report without applying) and `--yes` (skip prompt).
+Proceed from **Phase 7** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 **Phase 7 — `mod`:**
 - Parse `+vm,-vm` comma-separated expressions.

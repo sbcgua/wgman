@@ -117,6 +117,8 @@ func runApp(args []string, app *App) int {
 		return cmdShow(gf, cmdArgs, app)
 	case "init-ipsets":
 		return cmdInitIPSets(gf, cmdArgs, app)
+	case "deploy":
+		return cmdDeploy(gf, cmdArgs, app)
 	default:
 		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
 		return 2
