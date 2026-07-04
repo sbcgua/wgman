@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Review and adjust these values before installing this template.
+IPTABLES="/usr/sbin/iptables"
+IPSET="/usr/sbin/ipset"
+
+WG_IFACE="wg0"
+VM_IFACE="virbr0"
+
+SET_ALL="wg_allow_all"
+SET_MATRIX="wg_allow_matrix"
+
+CHAIN_INP="WGMAN_INP"
+CHAIN_FWD="WGMAN_FWD"
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") up|down|reassert
+
+Actions:
+  up        rebuild owned chains and insert parent jumps at the top
+  down      remove parent jumps and delete owned chains
+  reassert  move existing parent jumps back to the top
+EOF
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+require_non_empty() {
+  local name="$1"
+  local value="${!name:-}"
+
+  if [[ -z "$value" ]]; then
+    die "$name is empty; edit this template before installing it"
+  fi
+}
+
+require_executable() {
+  local path="$1"
+  local label="$2"
+
+  if [[ ! -x "$path" ]]; then
+    die "$label not found or not executable at $path; edit the command path in this script"
+  fi
+}
+
+require_common_config() {
+  if (( EUID != 0 )); then
+    die "this script must be run as root"
+  fi
+
+  require_non_empty IPTABLES
+  require_non_empty WG_IFACE
+  require_non_empty CHAIN_INP
+  require_non_empty CHAIN_FWD
+
+  require_executable "$IPTABLES" iptables
+}
+
+require_ipsets() {
+  require_non_empty IPSET
+  require_non_empty SET_ALL
+  require_non_empty SET_MATRIX
+
+  require_executable "$IPSET" ipset
+
+  if ! "$IPSET" list "$SET_ALL" >/dev/null 2>&1; then
+    die "ipset $SET_ALL does not exist; run 'wgman init-ipsets' and 'wgman deploy' before enabling this hook"
+  fi
+  if ! "$IPSET" list "$SET_MATRIX" >/dev/null 2>&1; then
+    die "ipset $SET_MATRIX does not exist; run 'wgman init-ipsets' and 'wgman deploy' before enabling this hook"
+  fi
+}
+
+require_up_config() {
+  require_common_config
+  require_non_empty VM_IFACE
+  require_ipsets
+}
+
+chain_exists() {
+  local chain="$1"
+  "$IPTABLES" -w -L "$chain" -n >/dev/null 2>&1
+}
+
+require_owned_chains() {
+  if ! chain_exists "$CHAIN_INP"; then
+    die "chain $CHAIN_INP is missing; run '$0 up' before '$0 reassert'"
+  fi
+  if ! chain_exists "$CHAIN_FWD"; then
+    die "chain $CHAIN_FWD is missing; run '$0 up' before '$0 reassert'"
+  fi
+}
+
+delete_all_jumps() {
+  local parent_chain="$1"
+  shift
+
+  while "$IPTABLES" -w -C "$parent_chain" "$@" 2>/dev/null; do
+    "$IPTABLES" -w -D "$parent_chain" "$@"
+  done
+}
+
+insert_jump_at_top() {
+  local parent_chain="$1"
+  shift
+
+  "$IPTABLES" -w -I "$parent_chain" 1 "$@"
+}
+
+delete_owned_chain() {
+  local chain="$1"
+
+  if chain_exists "$chain"; then
+    "$IPTABLES" -w -F "$chain"
+    "$IPTABLES" -w -X "$chain"
+  fi
+}
+
+remove_parent_jumps() {
+  delete_all_jumps INPUT -i "$WG_IFACE" -j "$CHAIN_INP"
+  delete_all_jumps FORWARD -i "$WG_IFACE" -j "$CHAIN_FWD"
+}
+
+insert_parent_jumps() {
+  insert_jump_at_top INPUT -i "$WG_IFACE" -j "$CHAIN_INP"
+  insert_jump_at_top FORWARD -i "$WG_IFACE" -j "$CHAIN_FWD"
+}
+
+cleanup_owned_firewall() {
+  remove_parent_jumps
+  delete_owned_chain "$CHAIN_INP"
+  delete_owned_chain "$CHAIN_FWD"
+}
+
+install_owned_chains() {
+  "$IPTABLES" -w -N "$CHAIN_INP"
+  "$IPTABLES" -w -A "$CHAIN_INP" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  "$IPTABLES" -w -A "$CHAIN_INP" -m conntrack --ctstate NEW -m set --match-set "$SET_ALL" src -j ACCEPT
+  # Limited-user host services, such as DNS on the WireGuard host, are not
+  # enabled by this template. Add a separate source set/rule if needed.
+
+  "$IPTABLES" -w -N "$CHAIN_FWD"
+  "$IPTABLES" -w -A "$CHAIN_FWD" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -m conntrack --ctstate NEW -m set --match-set "$SET_ALL" src -j ACCEPT
+  "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -m conntrack --ctstate NEW -m set --match-set "$SET_MATRIX" src,dst -j ACCEPT
+}
+
+action_up() {
+  require_up_config
+  cleanup_owned_firewall
+  install_owned_chains
+  insert_parent_jumps
+  echo "installed wgman firewall chains"
+}
+
+action_down() {
+  require_common_config
+  cleanup_owned_firewall
+  echo "removed wgman firewall chains"
+}
+
+action_reassert() {
+  require_common_config
+  require_owned_chains
+  remove_parent_jumps
+  insert_parent_jumps
+  echo "reasserted wgman firewall jumps"
+}
+
+if [[ $# -ne 1 ]]; then
+  usage >&2
+  exit 2
+fi
+
+case "$1" in
+  up)
+    action_up
+    ;;
+  down)
+    action_down
+    ;;
+  reassert)
+    action_reassert
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

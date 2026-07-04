@@ -72,6 +72,47 @@ Existing config files are not overwritten. Template sources live in [share/etc/w
 
 See [docs/SPEC.md](docs/SPEC.md) for the expected file structure.
 
+## WireGuard Firewall Hook Template
+
+The repository includes an optional `iptables` hook template at [share/usr/local/sbin/wgman-firewall-hook.template](share/usr/local/sbin/wgman-firewall-hook.template). It is not installed by `make install`.
+
+Review and edit the variables at the top of the template before installing it, especially:
+
+- `IPTABLES` and `IPSET`
+- `WG_IFACE`
+- `VM_IFACE`
+- `SET_ALL` and `SET_MATRIX`
+- `CHAIN_INP` and `CHAIN_FWD`
+
+Install it manually after review:
+
+```sh
+sudo install -m 0755 share/usr/local/sbin/wgman-firewall-hook.template /usr/local/sbin/wgman-firewall-hook
+```
+
+Before enabling the WireGuard hooks, create and populate the managed ipsets:
+
+```sh
+sudo wgman init-ipsets
+sudo wgman deploy --dry-run
+sudo wgman deploy
+```
+
+Then add the hook commands to the WireGuard interface config:
+
+```ini
+PostUp = /usr/local/sbin/wgman-firewall-hook up
+PreDown = /usr/local/sbin/wgman-firewall-hook down
+```
+
+The script manages only its dedicated `iptables` chains and parent jump rules. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
+
+```sh
+sudo /usr/local/sbin/wgman-firewall-hook reassert
+```
+
+The template is IPv4-only and uses `iptables`/`ipset`. Hosts using nftables or IPv6 should adapt the template manually.
+
 ## Basic Commands
 
 Implemented commands at the current stage:
