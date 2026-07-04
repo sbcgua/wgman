@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -179,6 +181,11 @@ var dbValidationTests = []struct {
 		wantErr: "unknown user",
 	},
 	{
+		name:    "duplicate access entry",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\naccess:\n  alice:\n    - sandbox\n    - sandbox\n",
+		wantErr: "duplicate entry",
+	},
+	{
 		name:    "unknown field in db",
 		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\nextrafield: bad\n",
 		wantErr: "not found in type",
@@ -262,6 +269,40 @@ func TestValidateOffline_StarMixedWithVMs(t *testing.T) {
 	result := ValidateOffline(cfg, db)
 	if !anyContains(result.HardErrors, `"*" must be the sole entry`) {
 		t.Errorf("expected hard error about mixed star access, got: %v", result.HardErrors)
+	}
+}
+
+func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	db := &DB{
+		Users: map[string]UserEntry{
+			"bob":   {IP: "10.8.0.15", Pub: "BOB_PUB="},
+			"alice": {IP: "10.8.0.10", Pub: "ALICE_PUB="},
+		},
+		VMs: map[string]string{
+			"sandbox": "192.168.122.100",
+			"mailvm":  "192.168.122.101",
+		},
+		Access: map[string][]string{
+			"bob":   {"sandbox", "mailvm"},
+			"alice": {"sandbox"},
+		},
+	}
+
+	if err := SaveDBAtomic(dir, db); err != nil {
+		t.Fatalf("SaveDBAtomic: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db.yaml: %v", err)
+	}
+	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
+	if string(data) != want {
+		t.Errorf("db.yaml =\n%s\nwant:\n%s", string(data), want)
+	}
+	if _, err := LoadDB(dir); err != nil {
+		t.Fatalf("saved db should load: %v", err)
 	}
 }
 

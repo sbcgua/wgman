@@ -109,3 +109,32 @@ func TestRunApp_CheckNotRoot(t *testing.T) {
 		t.Errorf("expected root error message, got: %s", errBuf.String())
 	}
 }
+
+func TestRunApp_ModExpressionMayStartWithDash(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	code := runApp([]string{"mod", "--config-dir", dir, "alice", "-sandbox"}, app)
+	if code != 0 {
+		t.Fatalf("mod with -sandbox exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "flag provided but not defined") {
+		t.Fatalf("-sandbox was parsed as a flag: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "applied") {
+		t.Errorf("expected applied output, got: %s", stdout.String())
+	}
+
+	found := false
+	for _, op := range sys.appliedOps {
+		if op == "del:wg_allow_matrix:10.8.0.10,192.168.122.100" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected delete op for alice sandbox, got: %v", sys.appliedOps)
+	}
+}

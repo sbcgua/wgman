@@ -218,6 +218,12 @@ func reconcileIPSet(setname string, expected map[string]string, live []IPSetEntr
 // Returns hard error strings; an empty slice means validation passed.
 func validateAllAccessIPSet(setname string, parsed *ParsedIPSet) []string {
 	var errs []string
+	if parsed.SetName != setname {
+		errs = append(errs, fmt.Sprintf(
+			"ipset %q output describes set %q, expected %q",
+			setname, parsed.SetName, setname))
+		return errs
+	}
 	if parsed.SetType != "hash:ip" {
 		errs = append(errs, fmt.Sprintf(
 			"ipset %q has type %q, expected hash:ip (run 'wgman init-ipsets' to recreate)",
@@ -239,6 +245,12 @@ func validateAllAccessIPSet(setname string, parsed *ParsedIPSet) []string {
 // Returns hard error strings; an empty slice means validation passed.
 func validateMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
 	var errs []string
+	if parsed.SetName != setname {
+		errs = append(errs, fmt.Sprintf(
+			"ipset %q output describes set %q, expected %q",
+			setname, parsed.SetName, setname))
+		return errs
+	}
 	if parsed.SetType != "hash:net,net" {
 		errs = append(errs, fmt.Sprintf(
 			"ipset %q has type %q, expected hash:net,net (run 'wgman init-ipsets' to recreate)",

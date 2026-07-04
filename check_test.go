@@ -339,3 +339,27 @@ func TestCheck_AddLineSetNameMismatch(t *testing.T) {
 		t.Errorf("expected parse hard error for set name mismatch, got: %v", result.HardErrors)
 	}
 }
+
+func TestCheck_AllAccessWrongCreateSetName(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	sys.ipsetResults["wg_allow_all"] =
+		"create other_set hash:ip family inet\n" +
+			"add other_set 10.8.0.5\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "output describes set") {
+		t.Errorf("expected hard error for wrong create set name, got: %v", result.HardErrors)
+	}
+}
+
+func TestCheck_MatrixWrongCreateSetName(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	sys.ipsetResults["wg_allow_matrix"] =
+		"create other_matrix hash:net,net family inet comment\n" +
+			"add other_matrix 10.8.0.10,192.168.122.100 comment \"alice -> sandbox\"\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "output describes set") {
+		t.Errorf("expected hard error for wrong matrix create set name, got: %v", result.HardErrors)
+	}
+}

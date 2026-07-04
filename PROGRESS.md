@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
 **Date:** 2026-07-04  
-**Status:** Review-1 (all findings) and Phase 5 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
+**Status:** Review-2 pre-work and Phase 7 complete; `go test ./...` passes (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
 
 ---
 
@@ -177,18 +177,61 @@ Test helper update ([testhelpers_test.go](testhelpers_test.go)):
 
 ---
 
+### Review-2 Pre-Work (complete)
+
+Applied before Phase 7 per the Review-2 recommendations:
+
+- **Configured ipset set-name validation** ([check.go](check.go)): `validateAllAccessIPSet` and `validateMatrixIPSet` now verify `ParsedIPSet.SetName` matches the configured set being checked. Regression tests added for wrong `create` set names in [check_test.go](check_test.go).
+- **Duplicate access rejection** ([config.go](config.go)): `LoadDB` rejects duplicate entries inside each user's `access` list. Regression coverage added in [config_test.go](config_test.go).
+- **Atomic deterministic db writer** ([config.go](config.go)): `SaveDBAtomic(dir, db)` writes a temp file in the config directory, chmods it to `0600`, and renames it over `db.yaml`. YAML output is deterministic: users, VMs, and access owners are sorted; access lists are written in caller-provided normalized order; `"*"` is explicitly quoted. Tests cover deterministic output and re-loading the written DB.
+
+### Phase 7 — `mod` (complete)
+
+New files:
+- [cmd_mod.go](cmd_mod.go) — `parseModExpression`, `cmdMod`, `planModAccess`, access normalization helpers, and expected-ipset diffing.
+  - Implements `wgman mod <name> <+res1,-res2...>`.
+  - Requires root.
+  - Parses comma-separated add/remove operations; invalid names and duplicate resources in the expression are rejected.
+  - Validates target user and VM/resource names; supports `"*"` as the all-access resource while preserving the existing rule that `"*"` must be the sole access entry.
+  - Calls `Check` first and refuses both hard errors and pre-existing ipset drift.
+  - Plans the updated `db.yaml` and system deltas before writing anything.
+  - Writes `db.yaml` atomically with deterministic duplicate-free access ordering.
+  - Applies corresponding `IpsetDeltaOp` values through `ApplyDeltas`.
+  - Supports `--dry-run`; dry-run prints planned deltas but does not write `db.yaml` or apply system updates.
+  - Removing absent access is treated as a no-op and reports `mod: no changes needed`.
+- [cmd_mod_test.go](cmd_mod_test.go) — tests cover:
+  - valid and invalid mod expression parsing;
+  - add/remove planning and expected add/delete deltas;
+  - missing user and unknown VM refusal;
+  - refusal on pre-existing drift;
+  - dry-run no-write/no-apply behavior;
+  - validation-failure no-write/no-apply behavior;
+  - successful DB write plus ipset delta application;
+  - removing absent access as a no-op.
+
+CLI update:
+- `mod` added to the command switch in [cli.go](cli.go). It was already present in help text.
+
+Verification:
+- `env GOCACHE=/tmp/go-build go test ./...`
+- `env GOCACHE=/tmp/go-build go build -o /tmp/wgman .`
+
+---
+
 ## What Comes Next
 
-Proceed from **Phase 7** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Proceed from **Phase 8** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
-**Phase 7 — `mod`:**
-- Parse `+vm,-vm` comma-separated expressions.
-- Validate user and VM names.
-- Refuse on pre-existing drift.
-- Update `db.yaml` atomically.
-- Apply corresponding deltas.
+**Phase 8 — `create`:**
+- Parse `wgman create <name> [ip] [res1,res2...]`.
+- Auto-allocate IPs from the interface subnet when not supplied.
+- Generate WireGuard key material through `SystemAdapter`.
+- Render `<user>.vpn.conf` from `user.conf.template`.
+- Add the user/access to `db.yaml` atomically.
+- Add the WireGuard peer and relevant ipset entries through existing deploy/apply routines.
+- Refuse on pre-existing hard errors or drift.
 
-Subsequent phases (8–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Subsequent phases (9–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ---
 
@@ -225,6 +268,11 @@ Subsequent phases (8–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IM
 | `ParseIPSet` | returns `*ParsedIPSet{SetName, SetType, Entries}`; validates set name and add-line consistency |
 | Set type enforcement | `hash:ip` required for all-access set; `hash:net,net` for matrix set — wrong type is a hard error |
 | Entry shape enforcement | all-access: single IPv4; matrix: two IPv4/net values — bad shapes are hard errors, never drift |
+| Parsed ipset name enforcement | `ParsedIPSet.SetName` must match the configured set name being checked |
+| `db.yaml` writes | `SaveDBAtomic` writes a same-directory temp file, chmods `0600`, then renames into place |
+| Access list writes | normalized to sorted, duplicate-free lists before writing; empty access owners are omitted |
+| `mod` drift policy | refuses any hard error or ipset drift before changing `db.yaml` |
+| `mod` absent removal | removing access that is not present is a no-op |
 
 ---
 

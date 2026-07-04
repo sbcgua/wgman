@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -130,7 +132,12 @@ func validateDB(db *DB) error {
 		if _, ok := db.Users[user]; !ok {
 			return fmt.Errorf("db.yaml: access references unknown user %q", user)
 		}
+		seenAccess := map[string]bool{}
 		for _, vm := range vms {
+			if seenAccess[vm] {
+				return fmt.Errorf("db.yaml: access for user %q contains duplicate entry %q", user, vm)
+			}
+			seenAccess[vm] = true
 			if vm == "*" {
 				continue
 			}
@@ -144,6 +151,119 @@ func validateDB(db *DB) error {
 	}
 
 	return nil
+}
+
+// SaveDBAtomic writes db.yaml in a deterministic order using a temporary file
+// in the same directory, then renames it into place.
+func SaveDBAtomic(dir string, db *DB) error {
+	data, err := marshalDBDeterministic(db)
+	if err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(dir, ".db.yaml.*")
+	if err != nil {
+		return fmt.Errorf("create temporary db.yaml: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temporary db.yaml: %w", err)
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod temporary db.yaml: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary db.yaml: %w", err)
+	}
+	if err := os.Rename(tmpName, filepath.Join(dir, "db.yaml")); err != nil {
+		return fmt.Errorf("replace db.yaml: %w", err)
+	}
+	cleanup = false
+	return nil
+}
+
+func marshalDBDeterministic(db *DB) ([]byte, error) {
+	root := &yaml.Node{Kind: yaml.MappingNode}
+
+	root.Content = append(root.Content,
+		scalarNode("users"), usersNode(db.Users),
+		scalarNode("vms"), stringMapNode(db.VMs),
+		scalarNode("access"), accessNode(db.Access),
+	)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(root); err != nil {
+		return nil, fmt.Errorf("encode db.yaml: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return nil, fmt.Errorf("close db.yaml encoder: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func usersNode(users map[string]UserEntry) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	for _, name := range sortedKeys(users) {
+		user := users[name]
+		entry := &yaml.Node{Kind: yaml.MappingNode}
+		entry.Content = append(entry.Content,
+			scalarNode("ip"), scalarNode(user.IP),
+			scalarNode("pub"), scalarNode(user.Pub),
+		)
+		node.Content = append(node.Content, scalarNode(name), entry)
+	}
+	return node
+}
+
+func stringMapNode(values map[string]string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		node.Content = append(node.Content, scalarNode(key), scalarNode(values[key]))
+	}
+	return node
+}
+
+func accessNode(access map[string][]string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	keys := make([]string, 0, len(access))
+	for key, entries := range access {
+		if len(entries) > 0 {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		seq := &yaml.Node{Kind: yaml.SequenceNode}
+		for _, entry := range access[key] {
+			seq.Content = append(seq.Content, scalarNode(entry))
+		}
+		node.Content = append(node.Content, scalarNode(key), seq)
+	}
+	return node
+}
+
+func scalarNode(value string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.ScalarNode, Value: value}
+	if value == "*" {
+		node.Style = yaml.DoubleQuotedStyle
+	}
+	return node
 }
 
 // caseFold lowercases a string for case-insensitive comparison.
