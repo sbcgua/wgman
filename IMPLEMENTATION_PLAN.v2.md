@@ -401,6 +401,14 @@ Acceptance:
 
 Goal: make the command coherent as a user-facing tool.
 
+Review-3 pre-work before completing this phase:
+
+- Define and implement a consistency-preserving failure policy for `create` and `remove`. Current code writes `db.yaml` before all live WireGuard operations finish; failures after that can produce WireGuard hard errors that `deploy` cannot reconcile.
+- Add failure-injection tests for `WGSetPeer`, `WGDelPeer`, and client-config write failures so partial failures cannot silently leave the normal recovery path blocked.
+- Reject unsupported global flags per command, especially `create --dry-run`, or implement `create --dry-run` explicitly. The spec currently lists dry-run support only for `deploy`, `remove`, and `mod`.
+- Update README command status: `create`, `mod`, and `remove` are now implemented.
+- Consider adding file and directory fsyncs to `SaveDBAtomic` where practical on the target Unix hosts.
+
 Functionality:
 
 - Review all help text and command result messages.
