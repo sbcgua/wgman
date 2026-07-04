@@ -17,6 +17,11 @@ type SystemAdapter interface {
 	// IPSetList runs "ipset list <setname> -o save" and returns the raw output.
 	IPSetList(setname string) (string, error)
 
+	// IPSetCreate creates an ipset with the given type and family inet.
+	// withComment enables per-entry comment storage on the set.
+	// The creation is idempotent: it is equivalent to "ipset create ... -exist".
+	IPSetCreate(setname, setType string, withComment bool) error
+
 	// IPSetAdd runs "ipset add <setname> <entry> [comment <comment>]".
 	IPSetAdd(setname, entry, comment string) error
 

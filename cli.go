@@ -13,14 +13,15 @@ const helpText = `wgman - wireguard and resource access manager
 Usage: wgman <command> [flags] [args...]
 
 Commands:
-  check   Validate config/db and live WireGuard/ipset state
-  list    List users, resources, and optional access for a user
-  show    Show live WireGuard peers mapped to user names
-  deploy  Reconcile ipset state from db.yaml (supports --dry-run, --yes)
-  create  Create a new VPN user
-  remove  Remove an existing VPN user (supports --dry-run, --yes)
-  mod     Modify user VM access (supports --dry-run)
-  help    Show this help message
+  check        Validate config/db and live WireGuard/ipset state
+  list         List users, resources, and optional access for a user
+  show         Show live WireGuard peers mapped to user names
+  init-ipsets  Create the managed ipsets defined in config.yaml
+  deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
+  create       Create a new VPN user
+  remove       Remove an existing VPN user (supports --dry-run, --yes)
+  mod          Modify user VM access (supports --dry-run)
+  help         Show this help message
 
 Global flags:
   --config-dir <dir>  Config directory (default /etc/wireguard/wgman)
@@ -114,6 +115,8 @@ func runApp(args []string, app *App) int {
 		return cmdList(gf, cmdArgs, app)
 	case "show":
 		return cmdShow(gf, cmdArgs, app)
+	case "init-ipsets":
+		return cmdInitIPSets(gf, cmdArgs, app)
 	default:
 		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
 		return 2

@@ -105,7 +105,7 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 	allRaw, err := sys.IPSetList(cfg.Sets.All)
 	if err != nil {
 		result.HardErrors = append(result.HardErrors,
-			fmt.Sprintf("ipset list %q: %s (does the set exist?)", cfg.Sets.All, err))
+			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.All, err))
 	} else {
 		allEntries, err := ParseIPSetEntries(allRaw)
 		if err != nil {
@@ -120,7 +120,7 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 	matrixRaw, err := sys.IPSetList(cfg.Sets.Matrix)
 	if err != nil {
 		result.HardErrors = append(result.HardErrors,
-			fmt.Sprintf("ipset list %q: %s (does the set exist?)", cfg.Sets.Matrix, err))
+			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.Matrix, err))
 	} else {
 		matrixEntries, err := ParseIPSetEntries(matrixRaw)
 		if err != nil {

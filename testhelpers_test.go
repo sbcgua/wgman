@@ -59,18 +59,19 @@ func (h *testHelper) assertError(err error, want string) {
 // fakeSystem is a minimal fake SystemAdapter for tests.
 // Fields can be populated per test case as needed.
 type fakeSystem struct {
-	isRoot       bool
-	subnetResult string
-	subnetErr    error
-	wgDumpResult string
-	wgDumpErr    error
-	ipsetResults map[string]string
-	ipsetErrs    map[string]error
-	appliedOps   []string // records IPSetAdd/Del and WGSet/Del calls
-	genKeyResult string
-	genKeyErr    error
-	pubKeyResult string
-	pubKeyErr    error
+	isRoot         bool
+	subnetResult   string
+	subnetErr      error
+	wgDumpResult   string
+	wgDumpErr      error
+	ipsetResults   map[string]string
+	ipsetErrs      map[string]error
+	ipsetCreateErr error
+	appliedOps     []string // records IPSetCreate/Add/Del and WGSet/Del calls
+	genKeyResult   string
+	genKeyErr      error
+	pubKeyResult   string
+	pubKeyErr      error
 }
 
 func newFakeSystem() *fakeSystem {
@@ -96,6 +97,18 @@ func (f *fakeSystem) IPSetList(setname string) (string, error) {
 		return "", err
 	}
 	return f.ipsetResults[setname], nil
+}
+
+func (f *fakeSystem) IPSetCreate(setname, setType string, withComment bool) error {
+	if f.ipsetCreateErr != nil {
+		return f.ipsetCreateErr
+	}
+	commentFlag := "nocomment"
+	if withComment {
+		commentFlag = "comment"
+	}
+	f.appliedOps = append(f.appliedOps, "create:"+setname+":"+setType+":"+commentFlag)
+	return nil
 }
 
 func (f *fakeSystem) IPSetAdd(setname, entry, comment string) error {

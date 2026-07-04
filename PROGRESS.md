@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
-**Date:** 2026-07-03  
-**Status:** Phases 0–4 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
+**Date:** 2026-07-04  
+**Status:** Review-1 pre-work and Phase 5 complete; `go test ./...` passes (0 failures, 1 expected skip); binary builds; `go vet` and `gofmt` clean.
 
 ---
 
@@ -83,39 +83,82 @@ New files:
   - `formatHandshake(ts, now)` → `"2d23h48m40s"` age string; `"never"` for zero.
   - `endpointHost(endpoint)` → strips `:port`, passes `"(none)"` through.
 - [cmd_list_show.go](cmd_list_show.go) — `cmdList`, `runList`, `runListUser`, `cmdShow`, `runShow`, `sortedKeys` generic helper.
-  - `runList(db, result, filter, w)`: outputs alphabetically sorted Users + VMs sections; with filter shows named user's access list; returns 1 if `!result.OK()`.
-  - `runShow(db, result, now, w)`: tabwriter-aligned table `NAME IP ENDPOINT RX TX LAST HANDSHAKE`; endpoint without port; bytes and handshake formatted.
+  - `runList(db, result, filter, stdout, stderr)`: outputs alphabetically sorted Users + VMs sections; with filter shows named user's access list; returns 1 if `!result.OK()`.
+  - `runShow(db, result, now, stdout, stderr)`: tabwriter-aligned table `NAME IP ENDPOINT RX TX LAST HANDSHAKE`; endpoint without port; bytes and handshake formatted.
   - Both refuse (exit 1) if check has hard errors or ipset drift.
 
 CLI updates ([cli.go](cli.go)):
 - `list` and `show` added to the command switch.
-- Inline error printing in `cmdCheck` replaced by shared `printCheckErrors(result)` helper (reused by `runList` and `runShow`).
+- Inline error printing in `cmdCheck` replaced by shared `printCheckErrors(result, w)` helper (reused by `runList` and `runShow`).
 
 Model update ([model.go](model.go)):
 - `CheckResult.WGDump *WGDumpResult` added — populated by `Check()` after the WG dump is parsed; `nil` if check aborted before that point.
 
 Test files: [format_test.go](format_test.go), [cmd_list_show_test.go](cmd_list_show_test.go) — 20+ cases covering formatting helpers, list output, filter behavior, show column content, and refusal on bad check state.
 
+### Review-1 Pre-Work (complete)
+
+Applied before Phase 5 per reviewer recommendations:
+
+- **IPv4 validation** ([validate.go](validate.go)): user and VM IPs now require `ip.To4() != nil`, so IPv6 addresses are rejected. Tests added: `TestValidateOffline_IPv6UserIP`, `TestValidateOffline_IPv6VMIP`.
+- **Dependency injection** ([cli.go](cli.go)): new `App` struct carrying `Sys SystemAdapter`, `Stdin io.Reader`, `Stdout io.Writer`, `Stderr io.Writer`, `Now func() time.Time`. `run()` is a thin wrapper; `runApp(args, app)` is the testable core. `main()` is the only place that constructs a real `App`. `printCheckErrors` now takes an explicit `io.Writer`.
+- **Argument validation**: `check` and `show` reject any positional arguments (exit 2); `list` rejects more than one positional argument (exit 2). Tests added in [cli_test.go](cli_test.go).
+- **`CombinedOutput` for reads** ([system_real.go](system_real.go)): `WGDump`, `IPSetList`, and `WGPubKey` now use `CombinedOutput()` so stderr from failed commands is included in error messages.
+
+### Phase 5 — `init-ipsets` (complete)
+
+New files:
+- [cmd_init_ipsets.go](cmd_init_ipsets.go) — `cmdInitIPSets(gf, args, app)`.
+  - Requires root.
+  - Loads `config.yaml` for set names.
+  - Creates the all-access set as `hash:ip` (family inet, no comments).
+  - Creates the matrix set as `hash:net,net` (family inet, with comments).
+  - Uses `-exist` flag for idempotent creation: safe to re-run.
+  - Rejects positional arguments.
+- [cmd_init_ipsets_test.go](cmd_init_ipsets_test.go) — 9 test cases:
+  - creates all-access set as `hash:ip`;
+  - creates matrix set as `hash:net,net` with comments;
+  - loads set names from `config.yaml`;
+  - requires root;
+  - rejects missing config;
+  - rejects positional arguments;
+  - idempotent via fake adapter;
+  - propagates create error;
+  - `check` missing-ipset hint includes `init-ipsets`.
+
+Interface/adapter updates:
+- `IPSetCreate(setname, setType string, withComment bool) error` added to `SystemAdapter` ([system.go](system.go)).
+- `RealSystem.IPSetCreate` implemented in [system_real.go](system_real.go): runs `ipset create <setname> <setType> family inet -exist [comment]`.
+- `fakeSystem.IPSetCreate` added to [testhelpers_test.go](testhelpers_test.go); records `"create:<setname>:<setType>:comment|nocomment"` in `appliedOps`.
+
+CLI updates:
+- `init-ipsets` added to help text and command switch in [cli.go](cli.go).
+- Missing-ipset hard errors in [check.go](check.go) now hint: `"run 'wgman init-ipsets' to create managed sets"`.
+
 ---
 
 ## What Comes Next
 
-Proceed from **Phase 5** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Proceed from **Phase 6** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
-**Phase 5 — `deploy`:**
+**Phase 6 — `deploy`:**
+
+Pre-work (Review-1, before this phase):
+- Tighten ipset parse/check so live set type and entry shape are validated before trusting deltas (see Review-1 High finding on `parse_ipset.go`).
+
+Functionality:
 - `ApplyDeltas(cfg *Config, deltas []IpsetDeltaOp, sys SystemAdapter) error` — apply add/delete ipset operations.
 - `cmdDeploy` — loads config/db, calls `Check`, refuses on hard errors; proceeds if only drift; reports planned deltas, prompts (unless `--yes`), applies.
 - Support `--dry-run` (report without applying) and `--yes` (skip prompt).
-- Test: deploy refuses hard errors; no drift → no changes; dry-run reports only; apply add/delete deltas; `--yes` bypasses prompt.
 
-**Phase 6 — `mod`:**
+**Phase 7 — `mod`:**
 - Parse `+vm,-vm` comma-separated expressions.
 - Validate user and VM names.
 - Refuse on pre-existing drift.
 - Update `db.yaml` atomically.
 - Apply corresponding deltas.
 
-Subsequent phases (7–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Subsequent phases (8–11) are fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
 ---
 
@@ -136,17 +179,23 @@ Subsequent phases (7–10) are fully described in [IMPLEMENTATION_PLAN.v2.md](IM
 | ipset comments | format `username -> vmname`; quoted in save output |
 | Test fakes | `fakeSystem` in `testhelpers_test.go` |
 | Testdata | `testdata/valid-offline/` |
-| Root check | in CLI layer only (`cmdCheck`); `Check()` itself is root-agnostic |
+| Root check | in CLI layer only; `Check()` is root-agnostic |
 | Check result order | `HardErrors`, `Drift`, `Deltas` all sorted before return |
 | `CheckResult.WGDump` | populated after successful WG dump parse; nil on early exit |
 | `list` filter | username → access list; blank → all users + all VMs |
 | `show` output | tabwriter table: NAME IP ENDPOINT RX TX LAST HANDSHAKE |
 | `sortedKeys` | generic helper in `cmd_list_show.go`; requires Go 1.18+ |
 | Flag ordering | two-pass `flag.FlagSet` parse: flags allowed before or after command |
+| Dependency injection | `App` struct in `cli.go`; `run()` builds real App; `runApp(args, app)` is testable |
+| `printCheckErrors` | takes explicit `io.Writer`; called with `app.Stderr` |
+| IPv4 enforcement | `ip.To4() != nil` in `ValidateOffline`; IPv6 is a hard error |
+| ipset creation | `-exist` flag; `hash:ip` for all-access, `hash:net,net comment` for matrix |
+| Missing ipset hint | check errors include `"run 'wgman init-ipsets' to create managed sets"` |
+| `IPSetCreate` ops | recorded as `"create:<name>:<type>:comment|nocomment"` in fakeSystem |
 
 ---
 
 ## Suggested Skills
 
-- **`grilling`** — use if new design questions arise before implementing Phases 4–5 (e.g. `show` output format, `list` column layout).
+- **`grilling`** — use if new design questions arise before implementing Phase 6 (e.g. confirmation UX, deploy output format).
 - **`handoff`** — use again if work needs to be paused after further phases.

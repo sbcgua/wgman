@@ -36,19 +36,30 @@ func (r *RealSystem) InterfaceSubnet(iface string) (string, error) {
 }
 
 func (r *RealSystem) WGDump(iface string) (string, error) {
-	out, err := exec.Command("wg", "show", iface, "dump").Output()
+	out, err := exec.Command("wg", "show", iface, "dump").CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("wg show %s dump: %w", iface, err)
+		return "", fmt.Errorf("wg show %s dump: %w: %s", iface, err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }
 
 func (r *RealSystem) IPSetList(setname string) (string, error) {
-	out, err := exec.Command("ipset", "list", setname, "-o", "save").Output()
+	out, err := exec.Command("ipset", "list", setname, "-o", "save").CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("ipset list %s: %w", setname, err)
+		return "", fmt.Errorf("ipset list %s: %w: %s", setname, err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
+}
+
+func (r *RealSystem) IPSetCreate(setname, setType string, withComment bool) error {
+	args := []string{"create", setname, setType, "family", "inet", "-exist"}
+	if withComment {
+		args = append(args, "comment")
+	}
+	if out, err := exec.Command("ipset", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("ipset create %s %s: %w: %s", setname, setType, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (r *RealSystem) IPSetAdd(setname, entry, comment string) error {
@@ -95,9 +106,9 @@ func (r *RealSystem) WGGenKey() (string, error) {
 func (r *RealSystem) WGPubKey(privkey string) (string, error) {
 	cmd := exec.Command("wg", "pubkey")
 	cmd.Stdin = bytes.NewBufferString(privkey + "\n")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("wg pubkey: %w", err)
+		return "", fmt.Errorf("wg pubkey: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
 }
