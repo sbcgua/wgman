@@ -280,8 +280,121 @@ func TestCreate_WGSetFailureRemovesConfigAndDoesNotWriteDB(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "carol.vpn.conf")); !os.IsNotExist(err) {
 		t.Fatalf("generated config should be removed after WGSetPeer failure, stat err: %v", err)
 	}
-	if len(sys.appliedOps) != 0 {
-		t.Errorf("expected no recorded live ops after WGSetPeer failure, got: %v", sys.appliedOps)
+	foundRollback := false
+	for _, op := range sys.appliedOps {
+		if op == "wgdel:wg0:CAROL_PUBLIC=" {
+			foundRollback = true
+		}
+	}
+	if !foundRollback {
+		t.Errorf("expected rollback WGDelPeer after WGSetPeer failure, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
+	}
+}
+
+func TestCreate_IPSetFailureRollsBackWireGuardAndConfig(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	sys.ipsetAddErr = os.ErrPermission
+	app, _, stderr := makeDeployApp(sys, "")
+	code := cmdCreate(&globalFlags{configDir: dir}, []string{"carol", "mailvm"}, app)
+	if code == 0 {
+		t.Fatal("create should fail when ipset add fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after ipset add failure")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "carol.vpn.conf")); !os.IsNotExist(err) {
+		t.Fatalf("generated config should be removed after ipset add failure, stat err: %v", err)
+	}
+	wantOps := []string{
+		"wgset:wg0:CAROL_PUBLIC=:10.8.0.16",
+		"wgdel:wg0:CAROL_PUBLIC=",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing rollback op %q from %v", want, sys.appliedOps)
+		}
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
+	}
+}
+
+func TestCreate_SaveDBFailureRollsBackLiveStateAndConfig(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+
+	oldSaveDBAtomic := saveDBAtomic
+	saveDBAtomic = func(_ string, _ *DB) error {
+		return os.ErrPermission
+	}
+	t.Cleanup(func() { saveDBAtomic = oldSaveDBAtomic })
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	app, _, stderr := makeDeployApp(sys, "")
+	code := cmdCreate(&globalFlags{configDir: dir}, []string{"carol", "mailvm"}, app)
+	if code == 0 {
+		t.Fatal("create should fail when db save fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after db save failure")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "carol.vpn.conf")); !os.IsNotExist(err) {
+		t.Fatalf("generated config should be removed after db save failure, stat err: %v", err)
+	}
+	wantOps := []string{
+		"wgset:wg0:CAROL_PUBLIC=:10.8.0.16",
+		"add:wg_allow_matrix:10.8.0.16,192.168.122.101:carol -> mailvm",
+		"del:wg_allow_matrix:10.8.0.16,192.168.122.101",
+		"wgdel:wg0:CAROL_PUBLIC=",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing rollback op %q from %v", want, sys.appliedOps)
+		}
 	}
 	if !strings.Contains(stderr.String(), "permission") {
 		t.Errorf("expected permission error, got: %s", stderr.String())

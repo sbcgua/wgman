@@ -81,7 +81,7 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
-	if err := SaveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
+	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
 		rollbackErr := rollbackRemoveLiveState(cfg.Interface, plan.Pub, plan.IP, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1

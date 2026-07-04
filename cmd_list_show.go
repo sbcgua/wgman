@@ -14,6 +14,9 @@ func cmdList(gf *globalFlags, args []string, app *App) int {
 		fmt.Fprintln(app.Stderr, "error: list takes at most one positional argument")
 		return 2
 	}
+	if rejectUnsupportedDryRun("list", gf, app.Stderr) {
+		return 2
+	}
 	if !app.Sys.IsRoot() {
 		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1
@@ -50,7 +53,7 @@ func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Write
 	}
 
 	if filter != "" {
-		return runListUser(db, filter, stdout)
+		return runListUser(db, filter, stdout, stderr)
 	}
 
 	fmt.Fprintln(stdout, "Users:")
@@ -64,20 +67,23 @@ func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Write
 		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
+	fmt.Fprintln(stdout, "list: OK")
 	return 0
 }
 
 // runListUser prints the access list for a single named user.
-func runListUser(db *DB, filter string, w io.Writer) int {
+func runListUser(db *DB, filter string, stdout, stderr io.Writer) int {
 	if _, ok := db.Users[filter]; !ok {
-		fmt.Fprintf(w, "error: user %q not found\n", filter)
+		fmt.Fprintf(stderr, "error: user %q not found\n", filter)
+		fmt.Fprintln(stderr, "list: FAILED")
 		return 1
 	}
 
 	vms := db.Access[filter]
-	fmt.Fprintf(w, "%s:\n", filter)
+	fmt.Fprintf(stdout, "%s:\n", filter)
 	if len(vms) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(stdout, "  (none)")
+		fmt.Fprintln(stdout, "list: OK")
 		return 0
 	}
 
@@ -85,8 +91,9 @@ func runListUser(db *DB, filter string, w io.Writer) int {
 	copy(sorted, vms)
 	sort.Strings(sorted)
 	for _, vm := range sorted {
-		fmt.Fprintf(w, "  %s\n", vm)
+		fmt.Fprintf(stdout, "  %s\n", vm)
 	}
+	fmt.Fprintln(stdout, "list: OK")
 	return 0
 }
 
@@ -94,6 +101,9 @@ func runListUser(db *DB, filter string, w io.Writer) int {
 func cmdShow(gf *globalFlags, args []string, app *App) int {
 	if len(args) > 0 {
 		fmt.Fprintln(app.Stderr, "error: show takes no positional arguments")
+		return 2
+	}
+	if rejectUnsupportedDryRun("show", gf, app.Stderr) {
 		return 2
 	}
 	if !app.Sys.IsRoot() {
@@ -164,6 +174,7 @@ func runShow(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Write
 		)
 	}
 	tw.Flush()
+	fmt.Fprintln(stdout, "show: OK")
 	return 0
 }
 

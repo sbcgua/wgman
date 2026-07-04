@@ -1,7 +1,7 @@
 # WGMAN — Handoff Document
 
 **Date:** 2026-07-04  
-**Status:** Review-3 pre-work for Phase 10 complete; Phase 10 polish itself has not been started. `go test ./...` and `go vet ./...` pass (using writable `GOCACHE=/tmp/go-build` in this sandbox); binary builds; `gofmt` clean.
+**Status:** Phase 10 complete. Review-3 pre-work was validated and hardened; CLI polish, README alignment, durable implementation notes, tests, vet, formatting, and release-style build all pass with writable Go caches in this sandbox.
 
 ---
 
@@ -327,18 +327,37 @@ Verification:
 
 ---
 
+### Phase 10 — Polish, Packaging, And Documentation Alignment (complete)
+
+- **Review-3 validation and hardening**:
+  - [cmd_create.go](cmd_create.go): a `WGSetPeer` failure is now treated as ambiguous and triggers best-effort rollback through `WGDelPeer` plus generated config cleanup.
+  - [cmd_create_test.go](cmd_create_test.go): added rollback coverage for ipset apply failure and final `db.yaml` save failure after live create changes.
+  - [cmd_remove_test.go](cmd_remove_test.go): added rollback coverage for final `db.yaml` save failure after live remove changes.
+  - [config.go](config.go): directory fsync is skipped on Windows, where syncing directory handles fails; Unix targets still perform the durability sync.
+- **CLI polish**:
+  - [cli.go](cli.go): help text now documents command arguments and the real `--dry-run` support scope.
+  - [cmd_check.go](cmd_check.go), [cmd_init_ipsets.go](cmd_init_ipsets.go), [cmd_list_show.go](cmd_list_show.go), and [cmd_create.go](cmd_create.go): unsupported `--dry-run` is rejected with exit code 2.
+  - [cmd_init_ipsets.go](cmd_init_ipsets.go), [cmd_list_show.go](cmd_list_show.go): successful setup/read-only commands now print concise final result lines.
+  - [cmd_list_show.go](cmd_list_show.go): missing filtered users now report on stderr with `list: FAILED`.
+- **Docs**:
+  - [README.md](README.md): wording now reflects the implemented tool and documents `--dry-run` support/rejection.
+  - [docs/NOTES.md](docs/NOTES.md): extracted durable implementation conventions from `PROGRESS.md` for future work without the phase history.
+- **Smoke-style tests**:
+  - [cli_test.go](cli_test.go): added help-output smoke coverage and exit-code-2 coverage for usage errors and unsupported `--dry-run`.
+
+Verification:
+- `$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'; go test ./...`
+- `$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'; go vet ./...`
+- `gofmt -l .`
+- `$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'; go build -trimpath -ldflags='-s -w' -o C:\Users\at\AppData\Local\Temp\wgman-phase10.exe .`
+
+---
+
 ## What Comes Next
 
-Proceed from **Phase 10** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Proceed from **Phase 11** in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
-**Phase 10 — Polish, Packaging, And Documentation Alignment:**
-- Review help text and command result messages.
-- Ensure final command lines report success/failure consistently.
-- Ensure exit codes are consistent.
-- Align README commands with implementation.
-- Add missing examples only if not already covered by [docs/SPEC.md](docs/SPEC.md).
-
-Phase 11 is fully described in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Phase 11 is real-host smoke checking and final build/install verification on a controlled Linux host. Use [docs/NOTES.md](docs/NOTES.md) for durable implementation conventions before making further changes.
 
 ---
 

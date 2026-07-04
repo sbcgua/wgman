@@ -1,6 +1,6 @@
 # WGMAN
 
-`wgman` is a planned command-line tool for managing WireGuard users and their access to internal VM resources through WireGuard peers and ipset-based firewall rules.
+`wgman` is a command-line tool for managing WireGuard users and their access to internal VM resources through WireGuard peers and ipset-based firewall rules.
 
 Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md). The implementation plan is in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
 
@@ -10,7 +10,7 @@ Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md). The implementati
 - Network access during initial setup to download Go module dependencies.
 - For real host smoke tests only: Linux with WireGuard tools, `ipset`, firewall rules, and root access.
 
-The main runtime dependency planned for the Go implementation is:
+The only external Go module dependency is:
 
 ```sh
 go get gopkg.in/yaml.v3@v3.0.1
@@ -115,7 +115,7 @@ The template is IPv4-only and uses `iptables`/`ipset`. Hosts using nftables or I
 
 ## Basic Commands
 
-Implemented commands at the current stage:
+Implemented commands:
 
 Show help:
 
@@ -165,6 +165,10 @@ Skip confirmation prompts where supported:
 ```sh
 sudo wgman deploy --yes
 ```
+
+`--dry-run` is supported by `deploy`, `remove`, and `mod`. It is rejected for
+commands such as `create` and `init-ipsets` so planned-change output is not
+confused with real changes.
 
 Create a user with an auto-assigned IP:
 

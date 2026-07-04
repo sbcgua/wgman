@@ -94,7 +94,7 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 0
 	}
 
-	if err := SaveDBAtomic(gf.configDir, updated); err != nil {
+	if err := saveDBAtomic(gf.configDir, updated); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}

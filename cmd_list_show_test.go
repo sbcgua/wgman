@@ -102,13 +102,16 @@ func TestRunList_FilterNoAccess(t *testing.T) {
 
 func TestRunList_FilterUnknownUser(t *testing.T) {
 	db := makeTestDB()
-	var buf strings.Builder
-	code := runList(db, makeCleanCheckResult(), "nobody", &buf, io.Discard)
+	var stdout, stderr strings.Builder
+	code := runList(db, makeCleanCheckResult(), "nobody", &stdout, &stderr)
 	if code == 0 {
 		t.Error("expected non-zero code for unknown user filter")
 	}
-	if !strings.Contains(buf.String(), "not found") {
-		t.Errorf("expected 'not found' in output, got: %s", buf.String())
+	if stdout.Len() != 0 {
+		t.Errorf("expected no stdout for missing user, got: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "not found") || !strings.Contains(stderr.String(), "list: FAILED") {
+		t.Errorf("expected not found failure in stderr, got: %s", stderr.String())
 	}
 }
 

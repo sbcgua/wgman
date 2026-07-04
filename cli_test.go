@@ -36,6 +36,69 @@ func TestRun_UnknownCommand(t *testing.T) {
 	}
 }
 
+func TestRunApp_HelpOutputSmoke(t *testing.T) {
+	app := makeFakeApp(false)
+	var stdout strings.Builder
+	app.Stdout = &stdout
+	code := runApp([]string{"help"}, app)
+	if code != 0 {
+		t.Fatalf("help exit code = %d, want 0", code)
+	}
+	out := stdout.String()
+	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "--dry-run"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunApp_ArgumentErrorsExitTwo(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "unknown command", args: []string{"bogus"}},
+		{name: "check positional", args: []string{"check", "alice"}},
+		{name: "show positional", args: []string{"show", "alice"}},
+		{name: "list too many", args: []string{"list", "alice", "bob"}},
+		{name: "init positional", args: []string{"init-ipsets", "extra"}},
+		{name: "deploy positional", args: []string{"deploy", "extra"}},
+		{name: "create dry-run", args: []string{"create", "--dry-run", "alice"}},
+		{name: "remove missing name", args: []string{"remove"}},
+		{name: "mod missing expression", args: []string{"mod", "alice"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app := makeFakeApp(true)
+			code := runApp(tc.args, app)
+			if code != 2 {
+				t.Fatalf("exit code = %d, want 2", code)
+			}
+		})
+	}
+}
+
+func TestRunApp_UnsupportedDryRunFlagsExitTwo(t *testing.T) {
+	for _, cmd := range []string{"check", "list", "show", "init-ipsets", "create"} {
+		t.Run(cmd, func(t *testing.T) {
+			app := makeFakeApp(true)
+			var stderr strings.Builder
+			app.Stderr = &stderr
+			args := []string{cmd, "--dry-run"}
+			if cmd == "create" {
+				args = append(args, "alice")
+			}
+			code := runApp(args, app)
+			if code != 2 {
+				t.Fatalf("%s --dry-run exit code = %d, want 2", cmd, code)
+			}
+			if !strings.Contains(stderr.String(), "does not support --dry-run") {
+				t.Errorf("expected unsupported dry-run error, got: %s", stderr.String())
+			}
+		})
+	}
+}
+
 // TestRun_CheckNotRoot verifies that wgman check rejects non-root callers.
 func TestRun_CheckNotRoot(t *testing.T) {
 	if os.Getuid() == 0 {

@@ -95,8 +95,7 @@ func parseCreateAccessList(s string) ([]string, error) {
 }
 
 func cmdCreate(gf *globalFlags, args []string, app *App) int {
-	if gf.dryRun {
-		fmt.Fprintln(app.Stderr, "error: create does not support --dry-run")
+	if rejectUnsupportedDryRun("create", gf, app.Stderr) {
 		return 2
 	}
 	if !app.Sys.IsRoot() {
@@ -182,8 +181,8 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 	if err := app.Sys.WGSetPeer(cfg.Interface, pubKey, clientIP); err != nil {
-		_ = os.Remove(clientConfigPath)
-		fmt.Fprintln(app.Stderr, "error:", err)
+		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, nil, app.Sys)
+		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
 
@@ -194,7 +193,7 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	if err := SaveDBAtomic(gf.configDir, updated); err != nil {
+	if err := saveDBAtomic(gf.configDir, updated); err != nil {
 		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1

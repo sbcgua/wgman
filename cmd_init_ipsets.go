@@ -13,6 +13,9 @@ func cmdInitIPSets(gf *globalFlags, args []string, app *App) int {
 		fmt.Fprintln(app.Stderr, "error: init-ipsets takes no positional arguments")
 		return 2
 	}
+	if rejectUnsupportedDryRun("init-ipsets", gf, app.Stderr) {
+		return 2
+	}
 	if !app.Sys.IsRoot() {
 		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1
@@ -38,5 +41,6 @@ func cmdInitIPSets(gf *globalFlags, args []string, app *App) int {
 	}
 	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:net,net)\n", cfg.Sets.Matrix)
 
+	fmt.Fprintln(app.Stdout, "init-ipsets: OK")
 	return 0
 }

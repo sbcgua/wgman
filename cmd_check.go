@@ -11,6 +11,9 @@ func cmdCheck(gf *globalFlags, args []string, app *App) int {
 		fmt.Fprintln(app.Stderr, "error: check takes no positional arguments")
 		return 2
 	}
+	if rejectUnsupportedDryRun("check", gf, app.Stderr) {
+		return 2
+	}
 	if !app.Sys.IsRoot() {
 		fmt.Fprintln(app.Stderr, "error: wgman must be run as root")
 		return 1

@@ -224,6 +224,58 @@ func TestRemove_WGDelFailureRollsBackIPSetsAndDoesNotWriteDB(t *testing.T) {
 	}
 }
 
+func TestRemove_SaveDBFailureRollsBackLiveState(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+
+	oldSaveDBAtomic := saveDBAtomic
+	saveDBAtomic = func(_ string, _ *DB) error {
+		return os.ErrPermission
+	}
+	t.Cleanup(func() { saveDBAtomic = oldSaveDBAtomic })
+
+	sys := buildCleanFakeSystem()
+	app, _, stderr := makeDeployApp(sys, "y\n")
+	code := cmdRemove(&globalFlags{configDir: dir}, []string{"bob"}, app)
+	if code == 0 {
+		t.Fatal("remove should fail when db save fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after db save failure")
+	}
+	wantOps := []string{
+		"del:wg_allow_matrix:10.8.0.15,192.168.122.100",
+		"del:wg_allow_matrix:10.8.0.15,192.168.122.101",
+		"wgdel:wg0:BOB_PUB=",
+		"wgset:wg0:BOB_PUB=:10.8.0.15",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.101:bob -> mailvm",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.100:bob -> sandbox",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing rollback op %q from %v", want, sys.appliedOps)
+		}
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
+	}
+}
+
 func TestRemove_AdminDeletesAllAccessSetEntry(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()

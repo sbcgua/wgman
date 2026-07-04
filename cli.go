@@ -14,19 +14,19 @@ Usage: wgman <command> [flags] [args...]
 
 Commands:
   check        Validate config/db and live WireGuard/ipset state
-  list         List users, resources, and optional access for a user
+  list [user]  List users, resources, and optional access for a user
   show         Show live WireGuard peers mapped to user names
   init-ipsets  Create the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
-  create       Create a new VPN user
-  remove       Remove an existing VPN user (supports --dry-run, --yes)
-  mod          Modify user VM access (supports --dry-run)
+  create       Create a new VPN user: create <name> [ip] [res1,res2...]
+  remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
+  mod          Modify user VM access: mod <name> <+res1,-res2...> (supports --dry-run)
   help         Show this help message
 
 Global flags:
   --config-dir <dir>  Config directory (default /etc/wireguard/wgman)
   --yes               Skip interactive confirmation prompts
-  --dry-run           Show planned changes without applying them
+  --dry-run           Show planned changes without applying them (deploy, remove, mod only)
 
 Run 'wgman help' or 'wgman -h' for this message.
 `
@@ -36,6 +36,14 @@ type globalFlags struct {
 	configDir string
 	yes       bool
 	dryRun    bool
+}
+
+func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
+	if !gf.dryRun {
+		return false
+	}
+	fmt.Fprintf(w, "error: %s does not support --dry-run\n", cmd)
+	return true
 }
 
 // App holds all injectable dependencies for command handlers.

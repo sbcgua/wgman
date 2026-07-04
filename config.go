@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -15,6 +16,8 @@ const defaultConfigDir = "/etc/wireguard/wgman"
 
 // nameRe is the allowed pattern for user and VM names.
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+var saveDBAtomic = SaveDBAtomic
 
 // LoadConfig reads and validates config.yaml from dir.
 func LoadConfig(dir string) (*Config, error) {
@@ -199,6 +202,9 @@ func SaveDBAtomic(dir string, db *DB) error {
 }
 
 func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	f, err := os.Open(dir)
 	if err != nil {
 		return fmt.Errorf("open config directory for sync: %w", err)
