@@ -37,9 +37,11 @@ type IpsetDeltaOp struct {
 
 // WGPeerDeltaOp describes one WireGuard peer reconciliation operation.
 type WGPeerDeltaOp struct {
-	User   string // db username
-	PubKey string // WireGuard public key
-	Remove bool   // true = remove peer
+	User      string // db username
+	PubKey    string // WireGuard public key
+	AllowedIP string // WireGuard allowed IP for add operations
+	Add       bool   // true = add peer
+	Remove    bool   // true = remove peer
 }
 
 // CheckResult is the structured result returned by the internal check routine.
@@ -56,7 +58,7 @@ type CheckResult struct {
 	WGDump     *WGDumpResult
 }
 
-// OK returns true when there are no hard errors and no drift.
+// OK returns true when there are no hard errors, ipset drift, or peer drift.
 func (r *CheckResult) OK() bool {
 	return len(r.HardErrors) == 0 && len(r.Drift) == 0 && len(r.PeerDeltas) == 0
 }

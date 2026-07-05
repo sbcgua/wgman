@@ -39,17 +39,18 @@ is needed.
 ## Check And Drift Policy
 
 - `CheckResult` separates hard errors from ipset drift.
-- `CheckResult.PeerDeltas` holds safe WireGuard peer cleanup operations, such
-  as removing live peers for inactive DB users.
-- `deploy` may reconcile ipset drift and inactive-user peer drift when there
-  are no hard errors.
+- `CheckResult.PeerDeltas` holds safe WireGuard peer operations for known DB
+  users, such as adding missing active peers and removing live peers for
+  inactive users.
+- `deploy` may reconcile ipset drift and known-user peer drift when there are
+  no hard errors.
 - `create`, `remove`, `mod`, `list`, and `show` require a fully clean
   `CheckResult`.
 - Configured ipsets are fully owned by `wgman`; unexpected entries in those
   sets are safe for `deploy` to delete.
 - Inactive users are excluded from expected WireGuard peers and managed
   ipsets. Inactive users present in live WireGuard are removable drift, while
-  active users missing from WireGuard remain hard errors.
+  active users missing from WireGuard are addable drift.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
 - `CheckResult.HardErrors`, `Drift`, and `Deltas` are sorted before return for
@@ -86,8 +87,9 @@ is needed.
 - `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
   `db.yaml`. Failures trigger best-effort rollback.
 - `remove` does not delete existing generated client config files.
-- `mod` writes `db.yaml` before applying ipset deltas; it refuses to run unless
-  the pre-command state is clean.
+- Access-only `mod` writes `db.yaml` before applying ipset deltas; it refuses
+  to run unless the pre-command state is clean. Inactive-user access edits can
+  be DB-only changes because inactive users have no expected live ipset state.
 
 ## Command Behavior
 
@@ -103,8 +105,10 @@ is needed.
   edits are manual `db.yaml` edits.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
-- `deploy` applies ipset deltas before WireGuard peer deltas. Inactive cleanup
-  therefore deletes managed ipset entries before removing the live peer.
+- `deploy` applies WireGuard peer additions, then ipset deltas, then
+  WireGuard peer removals. Activation repair therefore restores the peer before
+  access entries, and inactive cleanup deletes managed ipset entries before
+  removing the live peer.
 - `mod <user> activate` and `mod <user> deactivate` succeed as no-ops when the
   user is already in the requested state.
 - Inactive toggles apply live changes before committing `db.yaml`; failed live

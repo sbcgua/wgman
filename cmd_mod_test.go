@@ -386,6 +386,34 @@ func TestMod_ActivateRemovesInactiveAddsPeerAndIPSets(t *testing.T) {
 	}
 }
 
+func TestMod_InactiveUserAccessEditWritesDBWithoutLiveDeltas(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	sys := buildInactiveBobAbsentFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	code := cmdMod(&globalFlags{configDir: dir}, []string{"bob", "-mailvm"}, app)
+	if code != 0 {
+		t.Fatalf("mod inactive access edit exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "update db access for bob") {
+		t.Errorf("expected DB-only planned change, got: %s", stdout.String())
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no live ops for inactive access edit, got: %v", sys.appliedOps)
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if got := strings.Join(db.Access["bob"], ","); got != "sandbox" {
+		t.Errorf("bob access = %q, want sandbox", got)
+	}
+	if !db.Users["bob"].Inactive {
+		t.Errorf("bob inactive = false, want true")
+	}
+}
+
 func TestMod_RedundantTogglesAreNoOps(t *testing.T) {
 	tests := []struct {
 		name       string

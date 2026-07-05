@@ -53,7 +53,10 @@ func printCheckErrors(result *CheckResult, w io.Writer) {
 	if len(result.PeerDeltas) > 0 {
 		fmt.Fprintln(w, "check: WireGuard drift:")
 		for _, d := range result.PeerDeltas {
-			if d.Remove {
+			switch {
+			case d.Add:
+				fmt.Fprintf(w, "  - active user %q peer is absent and can be added\n", d.User)
+			case d.Remove:
 				fmt.Fprintf(w, "  - inactive user %q peer is present and can be removed\n", d.User)
 			}
 		}

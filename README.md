@@ -155,7 +155,7 @@ Preview access reconciliation:
 sudo wgman deploy --dry-run
 ```
 
-Apply access reconciliation from `db.yaml` to managed ipsets:
+Apply reconciliation from `db.yaml` to WireGuard peers and managed ipsets:
 
 ```sh
 sudo wgman deploy

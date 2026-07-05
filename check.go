@@ -71,9 +71,9 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		dbByPub[u.Pub] = name
 	}
 
-	// Every active db user must have a matching WG peer with the correct IP.
-	// Inactive users are intentionally absent; any live peer for them is safe
-	// removable drift that deploy can reconcile.
+	// Every active db user should have a matching WG peer with the correct IP.
+	// Missing active peers and present inactive peers are safe drift that deploy
+	// can reconcile from db.yaml.
 	for name, u := range db.Users {
 		peer, ok := wgByPub[u.Pub]
 		if u.Inactive {
@@ -87,8 +87,12 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 			continue
 		}
 		if !ok {
-			result.HardErrors = append(result.HardErrors,
-				fmt.Sprintf("user %q (pub %s) not found in WireGuard peers", name, u.Pub))
+			result.PeerDeltas = append(result.PeerDeltas, WGPeerDeltaOp{
+				User:      name,
+				PubKey:    u.Pub,
+				AllowedIP: u.IP,
+				Add:       true,
+			})
 			continue
 		}
 		if peer.AllowedIP != u.IP {

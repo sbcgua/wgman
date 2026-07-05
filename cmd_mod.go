@@ -94,13 +94,22 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	if len(deltas) == 0 {
+	dbChanged := !sameStringSlices(db.Access[args[0]], updated.Access[args[0]])
+	if len(deltas) == 0 && !dbChanged {
 		fmt.Fprintln(app.Stdout, "mod: no changes needed")
 		return 0
 	}
 
-	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", len(deltas))
-	printDeltas(deltas, app.Stdout)
+	changeCount := len(deltas)
+	if dbChanged && len(deltas) == 0 {
+		changeCount = 1
+	}
+	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
+	if len(deltas) > 0 {
+		printDeltas(deltas, app.Stdout)
+	} else {
+		fmt.Fprintf(app.Stdout, "  update db access for %s\n", args[0])
+	}
 
 	if gf.dryRun {
 		fmt.Fprintln(app.Stdout, "mod: dry-run, no changes applied")
@@ -116,7 +125,7 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	fmt.Fprintf(app.Stdout, "mod: applied %d change(s)\n", len(deltas))
+	fmt.Fprintf(app.Stdout, "mod: applied %d change(s)\n", changeCount)
 	return 0
 }
 
@@ -146,7 +155,7 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
 	printDeltas(plan.Deltas, app.Stdout)
 	if plan.PeerAdd != nil {
-		fmt.Fprintf(app.Stdout, "  add wg peer %s %s %s\n", plan.PeerAdd.User, plan.PeerAdd.PubKey, db.Users[user].IP)
+		printPeerDeltas([]WGPeerDeltaOp{*plan.PeerAdd}, app.Stdout)
 	}
 	if plan.PeerDel != nil {
 		printPeerDeltas([]WGPeerDeltaOp{*plan.PeerDel}, app.Stdout)
@@ -219,7 +228,7 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 		Deltas:    diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
 	}
 	if action == "activate" {
-		plan.PeerAdd = &WGPeerDeltaOp{User: user, PubKey: entry.Pub}
+		plan.PeerAdd = &WGPeerDeltaOp{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Add: true}
 	} else {
 		plan.PeerDel = &WGPeerDeltaOp{User: user, PubKey: entry.Pub, Remove: true}
 	}
@@ -228,8 +237,7 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 
 func applyModToggleLive(iface string, plan *modTogglePlan, sys SystemAdapter) ([]IpsetDeltaOp, error) {
 	if plan.PeerAdd != nil {
-		user := plan.UpdatedDB.Users[plan.PeerAdd.User]
-		if err := sys.WGSetPeer(iface, plan.PeerAdd.PubKey, user.IP); err != nil {
+		if err := ApplyPeerDeltas(iface, []WGPeerDeltaOp{*plan.PeerAdd}, sys); err != nil {
 			return nil, err
 		}
 	}
@@ -396,4 +404,16 @@ func normalizeAccessSet(set map[string]bool) []string {
 	}
 	sort.Strings(entries)
 	return entries
+}
+
+func sameStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

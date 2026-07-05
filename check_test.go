@@ -197,7 +197,7 @@ func TestCheck_UserIPOutsideSubnet(t *testing.T) {
 	}
 }
 
-func TestCheck_MissingWGPeer(t *testing.T) {
+func TestCheck_MissingActiveWGPeerProducesPeerDelta(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	// Remove alice from WG dump.
 	sys.wgDumpResult = "SERVER_PRIV=\tSERVER_PUB=\t51820\toff\n" +
@@ -205,8 +205,21 @@ func TestCheck_MissingWGPeer(t *testing.T) {
 		"BOB_PUB=\t(none)\t(none)\t10.8.0.15/32\t0\t0\t0\toff\n"
 
 	result := Check(makeTestCfg(), makeTestDB(), sys)
-	if !anyContains(result.HardErrors, "not found in WireGuard peers") {
-		t.Errorf("expected missing peer error, got: %v", result.HardErrors)
+	if len(result.HardErrors) != 0 {
+		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+	}
+	if len(result.PeerDeltas) != 1 {
+		t.Fatalf("peer deltas = %+v, want one", result.PeerDeltas)
+	}
+	delta := result.PeerDeltas[0]
+	if delta.User != "alice" || delta.PubKey != "ALICE_PUB=" || delta.AllowedIP != "10.8.0.10" || !delta.Add {
+		t.Errorf("peer delta = %+v, want alice add", delta)
+	}
+	if result.OK() {
+		t.Error("expected OK() false when peer add is pending")
+	}
+	if !result.Clean() {
+		t.Error("expected Clean() true for recoverable active peer drift")
 	}
 }
 

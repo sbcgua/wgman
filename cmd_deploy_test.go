@@ -372,6 +372,72 @@ func TestDeploy_AppliesInactivePeerRemoval(t *testing.T) {
 	}
 }
 
+func TestDeploy_DryRunReportsActivePeerAdd(t *testing.T) {
+	sys := buildInactiveBobAbsentFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+	gf := &globalFlags{configDir: dir, dryRun: true}
+	code := cmdDeploy(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("deploy --dry-run active peer add exit code = %d, want 0", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "add wg peer bob BOB_PUB= 10.8.0.15") {
+		t.Errorf("expected active peer add in output, got: %s", out)
+	}
+	if !strings.Contains(out, "add wg_allow_matrix 10.8.0.15,192.168.122.100") ||
+		!strings.Contains(out, "add wg_allow_matrix 10.8.0.15,192.168.122.101") {
+		t.Errorf("expected bob ipset adds in output, got: %s", out)
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no applied ops in dry-run, got: %v", sys.appliedOps)
+	}
+}
+
+func TestDeploy_AppliesActivePeerAddBeforeIPSetAdds(t *testing.T) {
+	sys := buildInactiveBobAbsentFakeSystem()
+	app, _, _ := makeDeployApp(sys, "")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+	gf := &globalFlags{configDir: dir, yes: true}
+	code := cmdDeploy(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("deploy active peer add exit code = %d, want 0", code)
+	}
+	wantOps := []string{
+		"wgset:wg0:BOB_PUB=:10.8.0.15",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.100:bob -> sandbox",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.101:bob -> mailvm",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing op %q from %v", want, sys.appliedOps)
+		}
+	}
+	wgIndex := -1
+	firstAddIndex := -1
+	for i, op := range sys.appliedOps {
+		if op == "wgset:wg0:BOB_PUB=:10.8.0.15" {
+			wgIndex = i
+		}
+		if strings.HasPrefix(op, "add:wg_allow_matrix:10.8.0.15,") && firstAddIndex == -1 {
+			firstAddIndex = i
+		}
+	}
+	if wgIndex == -1 || firstAddIndex == -1 || wgIndex > firstAddIndex {
+		t.Errorf("expected WireGuard add before ipset adds, got: %v", sys.appliedOps)
+	}
+}
+
 func TestDeploy_AppliesInactiveIPSetDeletesBeforePeerRemoval(t *testing.T) {
 	sys := buildInactivePeerAndIPSetDriftFakeSystem()
 	app, _, _ := makeDeployApp(sys, "")

@@ -73,7 +73,12 @@ func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
 // Operations are applied in order; the first error encountered is returned.
 func ApplyPeerDeltas(iface string, deltas []WGPeerDeltaOp, sys SystemAdapter) error {
 	for _, d := range deltas {
-		if d.Remove {
+		switch {
+		case d.Add:
+			if err := sys.WGSetPeer(iface, d.PubKey, d.AllowedIP); err != nil {
+				return fmt.Errorf("add WireGuard peer for %q: %w", d.User, err)
+			}
+		case d.Remove:
 			if err := sys.WGDelPeer(iface, d.PubKey); err != nil {
 				return fmt.Errorf("remove WireGuard peer for %q: %w", d.User, err)
 			}
@@ -82,11 +87,42 @@ func ApplyPeerDeltas(iface string, deltas []WGPeerDeltaOp, sys SystemAdapter) er
 	return nil
 }
 
+// ApplyStateDeltas applies WireGuard and ipset operations in a dependency-aware
+// order: peer additions, ipset changes, then peer removals.
+func ApplyStateDeltas(iface string, ipsetDeltas []IpsetDeltaOp, peerDeltas []WGPeerDeltaOp, sys SystemAdapter) error {
+	if err := ApplyPeerDeltas(iface, filterPeerDeltas(peerDeltas, true), sys); err != nil {
+		return err
+	}
+	if err := ApplyDeltas(ipsetDeltas, sys); err != nil {
+		return err
+	}
+	if err := ApplyPeerDeltas(iface, filterPeerDeltas(peerDeltas, false), sys); err != nil {
+		return err
+	}
+	return nil
+}
+
+func filterPeerDeltas(deltas []WGPeerDeltaOp, add bool) []WGPeerDeltaOp {
+	out := make([]WGPeerDeltaOp, 0, len(deltas))
+	for _, d := range deltas {
+		if add && d.Add {
+			out = append(out, d)
+		}
+		if !add && d.Remove {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // printPeerDeltas writes a human-readable summary of planned WireGuard peer
 // operations to w.
 func printPeerDeltas(deltas []WGPeerDeltaOp, w io.Writer) {
 	for _, d := range deltas {
-		if d.Remove {
+		switch {
+		case d.Add:
+			fmt.Fprintf(w, "  add wg peer %s %s %s\n", d.User, d.PubKey, d.AllowedIP)
+		case d.Remove:
 			fmt.Fprintf(w, "  remove wg peer %s %s\n", d.User, d.PubKey)
 		}
 	}
@@ -157,11 +193,7 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		}
 	}
 
-	if err := ApplyDeltas(result.Deltas, app.Sys); err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-	if err := ApplyPeerDeltas(cfg.Interface, result.PeerDeltas, app.Sys); err != nil {
+	if err := ApplyStateDeltas(cfg.Interface, result.Deltas, result.PeerDeltas, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}

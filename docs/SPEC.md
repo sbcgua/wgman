@@ -94,7 +94,7 @@ Global flags:
   - check VMs defined in access section are present in vms sectio
   - other reasonable consistency checks
 - check all wg users (hashes) are in file users (hash) and that active users' ips are the same
-- check all active file users (hashes) are in wg
+- check all active file users (hashes) are in wg; if an active user's WireGuard peer is missing, report restorable drift that `deploy` can reconcile
 - inactive file users are expected to be absent from WireGuard and managed ipsets; if an inactive user's WireGuard peer or managed ipset entries are still present, report removable drift
 - read ip sets defined in `config.sets` - `ipset list <setname> -o save`
 - check = matrix,all
@@ -196,9 +196,9 @@ Reuse the `deploy` routine to update the state.
 ## Deploy
 
 - calls the `check` internally for the state and config validation. In case of this command, the difference if supposed to be applied to the system state (the file state supposed to be intended).
-- user list is not supposed to be changed. Unknown WireGuard peers and missing active-user peers are errors, but inactive users that still exist live are planned for removal.
+- user list is not supposed to be changed. Unknown WireGuard peers and peer IP mismatches are errors, but missing active-user peers are planned for addition and inactive users that still exist live are planned for removal.
 - report the planned updates from the deltas returned by internal `check`, confirm with the user
-- update system state (deploy) - update the relevant ipsets by applying deltas only, then remove inactive users' WireGuard peers where planned
+- update system state (deploy) - add missing active users' WireGuard peers where planned, update the relevant ipsets by applying deltas only, then remove inactive users' WireGuard peers where planned
 
 Reuse the `deploy` routine to update the state.
 
@@ -213,12 +213,12 @@ The following decisions were agreed during planning and should guide implementat
   - ipset drift: missing or extra entries in the configured access ipsets compared with `db.yaml`.
 - `check` reports hard errors and ipset drift. Any finding makes the command fail.
 - `create`, `remove`, and `mod` must refuse to run if `check` reports either hard errors or ipset drift. Direct changes to `db.yaml` should be applied through a clean state.
-- `deploy` may run when the only detected problems are ipset drift or removable inactive-user WireGuard peer drift. It must treat `db.yaml` as the intended access state and reconcile the configured ipsets to it.
+- `deploy` may run when the only detected problems are ipset drift or restorable WireGuard peer drift for known DB users. It must treat `db.yaml` as the intended access state and reconcile WireGuard peers and configured ipsets to it.
 - Internal `check` must prepare concrete ipset deltas so command logic can either report them or apply them.
-- Internal `check` must prepare concrete WireGuard peer removal deltas for inactive users that still exist live.
+- Internal `check` must prepare concrete WireGuard peer add deltas for active users missing live and removal deltas for inactive users that still exist live.
 - The configured `sets.all` and `sets.matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
 - Inactive users remain in `db.yaml` but are excluded from expected live WireGuard peers and managed ipsets.
-- `deploy` applies deltas only: add missing expected ipset entries, delete unexpected ipset entries, and remove inactive users' live WireGuard peers. It must not flush/rebuild whole ipsets unless a future explicit option is added.
+- `deploy` applies deltas only: add missing active-user WireGuard peers, add missing expected ipset entries, delete unexpected ipset entries, and remove inactive users' live WireGuard peers. It must not flush/rebuild whole ipsets unless a future explicit option is added.
 
 ### Key material and generated configs
 
@@ -238,7 +238,7 @@ The following decisions were agreed during planning and should guide implementat
 - `remove` and `deploy` prompt by default.
 - `create` and `mod` do not prompt after validation.
 - Global `--yes` skips confirmations for automation.
-- Global `--dry-run` is supported by `deploy`, `remove`, and `mod`; it reports planned changes without applying them. For `deploy`, dry-run includes planned inactive-user WireGuard peer removals.
+- Global `--dry-run` is supported by `deploy`, `remove`, and `mod`; it reports planned changes without applying them. For `deploy`, dry-run includes planned WireGuard peer additions and removals.
 
 ### Configuration format and dependencies
 
@@ -285,7 +285,8 @@ Recommended unit test coverage:
 - Check routine:
   - clean state returns no hard errors and no deltas;
   - config-only problems return hard errors;
-  - WireGuard peer mismatch or missing peer returns hard errors;
+  - WireGuard peer IP mismatch returns hard errors;
+  - missing active peers and present inactive peers return restorable peer deltas;
   - missing/extra ipset entries return drift deltas;
   - hard errors and drift are clearly separated for callers.
 - Delta/deploy planning:
