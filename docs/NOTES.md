@@ -16,6 +16,9 @@ is needed.
   with simple ASCII folding (`caseFold`).
 - User and VM IPs must be IPv4. IPv6 and non-IP values are hard errors.
 - User IPs in `db.yaml` are stored as plain IPv4 values, without `/32`.
+- User records support optional `comment` metadata and optional
+  `inactive: true`. Missing `inactive` means active. Deterministic writes omit
+  empty comments and omit `inactive` when false.
 - Duplicate user IPs, duplicate public keys, duplicate access entries, and
   access references to unknown users or VMs are rejected.
 - Access entry `"*"` means all-access/admin and must be the only entry for

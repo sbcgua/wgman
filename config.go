@@ -252,6 +252,12 @@ func usersNode(users map[string]UserEntry) *yaml.Node {
 			scalarNode("ip"), scalarNode(user.IP),
 			scalarNode("pub"), scalarNode(user.Pub),
 		)
+		if user.Comment != "" {
+			entry.Content = append(entry.Content, scalarNode("comment"), scalarNode(user.Comment))
+		}
+		if user.Inactive {
+			entry.Content = append(entry.Content, scalarNode("inactive"), boolNode(true))
+		}
 		node.Content = append(node.Content, scalarNode(name), entry)
 	}
 	return node
@@ -293,6 +299,16 @@ func scalarNode(value string) *yaml.Node {
 	node := &yaml.Node{Kind: yaml.ScalarNode, Value: value}
 	if value == "*" {
 		node.Style = yaml.DoubleQuotedStyle
+	}
+	return node
+}
+
+func boolNode(value bool) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool"}
+	if value {
+		node.Value = "true"
+	} else {
+		node.Value = "false"
 	}
 	return node
 }

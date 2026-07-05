@@ -23,7 +23,7 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
 
 `db.yaml` - the database of users, VMs and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
 
-- `users` section list users, every one contains `ip` and `pub` (public key) params. The ip is mostly for the human readability of the file. Wgman must user pub keys for its validations.
+- `users` section list users, every one contains `ip` and `pub` (public key) params. The ip is mostly for the human readability of the file. Wgman must user pub keys for its validations. A user may also include optional `comment` metadata and optional `inactive: true`; missing `inactive` means the user is active.
 - `vms` section - list of VM names and the corresponding ip addresses
 - The `access` matrix declares VMs accessible to a user (to be added to `sets.matrix`). If the VM = `*`, the user must be added to the `sets.all` (admin). A user may have access to multiple VMs.
 
@@ -35,9 +35,11 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
     alice:
       ip: 10.8.0.10
       pub: 1j67823bghdhskfj6734gyg4564645
+      comment: laptop replacement scheduled
     bob:
       ip: 10.8.0.15
       pub: 1j67823bghdhskfj6734gyg5345645
+      inactive: true
 
   vms:
     sandbox: 192.168.122.100

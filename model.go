@@ -21,8 +21,10 @@ type DB struct {
 
 // UserEntry is one entry in the users section of db.yaml.
 type UserEntry struct {
-	IP  string `yaml:"ip"`
-	Pub string `yaml:"pub"`
+	IP       string `yaml:"ip"`
+	Pub      string `yaml:"pub"`
+	Comment  string `yaml:"comment,omitempty"`
+	Inactive bool   `yaml:"inactive,omitempty"`
 }
 
 // IpsetDeltaOp describes one add or delete operation on an ipset.

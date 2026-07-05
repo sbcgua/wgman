@@ -113,6 +113,38 @@ func TestLoadDB_Valid(t *testing.T) {
 	}
 }
 
+func TestLoadDB_UserMetadata(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	h.writeFile(dir, "db.yaml", `
+users:
+  alice:
+    ip: 10.8.0.10
+    pub: ALICE_PUB=
+    comment: offboarding pending
+    inactive: true
+  bob:
+    ip: 10.8.0.11
+    pub: BOB_PUB=
+vms:
+  sandbox: 192.168.122.100
+`)
+	db, err := LoadDB(dir)
+	h.assertNoError(err)
+	if db.Users["alice"].Comment != "offboarding pending" {
+		t.Errorf("alice comment = %q, want offboarding pending", db.Users["alice"].Comment)
+	}
+	if !db.Users["alice"].Inactive {
+		t.Error("alice inactive = false, want true")
+	}
+	if db.Users["bob"].Comment != "" {
+		t.Errorf("bob comment = %q, want empty", db.Users["bob"].Comment)
+	}
+	if db.Users["bob"].Inactive {
+		t.Error("bob inactive = true, want false")
+	}
+}
+
 func TestLoadDB_FromTestdata(t *testing.T) {
 	_, err := LoadDB("testdata/valid-offline")
 	if err != nil {
@@ -188,6 +220,11 @@ var dbValidationTests = []struct {
 	{
 		name:    "unknown field in db",
 		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\nextrafield: bad\n",
+		wantErr: "not found in type",
+	},
+	{
+		name:    "unknown field in user",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\n    extra: bad\nvms:\n  sandbox: 192.168.122.100\n",
 		wantErr: "not found in type",
 	},
 }
@@ -277,7 +314,7 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	dir := h.makeTempDir()
 	db := &DB{
 		Users: map[string]UserEntry{
-			"bob":   {IP: "10.8.0.15", Pub: "BOB_PUB="},
+			"bob":   {IP: "10.8.0.15", Pub: "BOB_PUB=", Comment: "temporary contractor", Inactive: true},
 			"alice": {IP: "10.8.0.10", Pub: "ALICE_PUB="},
 		},
 		VMs: map[string]string{
@@ -297,12 +334,19 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read db.yaml: %v", err)
 	}
-	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
+	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n    comment: temporary contractor\n    inactive: true\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
 	if string(data) != want {
 		t.Errorf("db.yaml =\n%s\nwant:\n%s", string(data), want)
 	}
-	if _, err := LoadDB(dir); err != nil {
+	loaded, err := LoadDB(dir)
+	if err != nil {
 		t.Fatalf("saved db should load: %v", err)
+	}
+	if loaded.Users["alice"].Comment != "" || loaded.Users["alice"].Inactive {
+		t.Errorf("alice metadata = %+v, want empty comment and active", loaded.Users["alice"])
+	}
+	if loaded.Users["bob"].Comment != "temporary contractor" || !loaded.Users["bob"].Inactive {
+		t.Errorf("bob metadata = %+v, want comment and inactive true", loaded.Users["bob"])
 	}
 }
 
