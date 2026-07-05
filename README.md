@@ -60,6 +60,7 @@ Unit tests should not require WireGuard, `ipset`, firewall tools, or root access
 Build the binary, then install it on the target Linux host:
 
 ```sh
+make build
 sudo make install
 ```
 

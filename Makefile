@@ -27,7 +27,11 @@ check: fmt test vet
 
 install: install-bin install-config
 
-install-bin: build
+install-bin:
+	@if [ ! -f "$(BINARY)" ]; then \
+		echo "error: $(BINARY) not found; run 'make build' first" >&2; \
+		exit 1; \
+	fi
 	$(INSTALL) -d "$(DESTDIR)$(SBINDIR)"
 	$(INSTALL) -m 0755 "$(BINARY)" "$(DESTDIR)$(SBINDIR)/$(BINARY)"
 
