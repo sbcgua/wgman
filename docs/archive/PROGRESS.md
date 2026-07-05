@@ -346,10 +346,10 @@ Verification:
   - [cli_test.go](../../cli_test.go): added help-output smoke coverage and exit-code-2 coverage for usage errors and unsupported `--dry-run`.
 
 Verification:
-- `$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'; go test ./...`
-- `$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'; go vet ./...`
+- `$env:GOCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gomodcache'; go test ./...`
+- `$env:GOCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gomodcache'; go vet ./...`
 - `gofmt -l .`
-- `$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'; go build -trimpath -ldflags='-s -w' -o C:\Users\at\AppData\Local\Temp\wgman-phase10.exe .`
+- `$env:GOCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gocache'; $env:GOMODCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gomodcache'; go build -trimpath -ldflags='-s -w' -o $USERPROFILE\AppData\Local\Temp\wgman-phase10.exe .`
 
 ---
 

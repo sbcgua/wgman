@@ -52,8 +52,8 @@ I would not start Phase 7 until the medium finding is fixed. It is small, but it
 Executed with Go caches redirected to writable temp directories:
 
 ```sh
-$env:GOCACHE='C:\Users\at\AppData\Local\Temp\wgman-gocache'
-$env:GOMODCACHE='C:\Users\at\AppData\Local\Temp\wgman-gomodcache'
+$env:GOCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gocache'
+$env:GOMODCACHE='$USERPROFILE\AppData\Local\Temp\wgman-gomodcache'
 go test ./...
 go vet ./...
 go build -o $env:TEMP\wgman-review.exe .
