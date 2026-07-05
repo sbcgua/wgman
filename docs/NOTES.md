@@ -105,6 +105,10 @@ is needed.
   reporting dry-run results.
 - `deploy` applies ipset deltas before WireGuard peer deltas. Inactive cleanup
   therefore deletes managed ipset entries before removing the live peer.
+- `mod <user> activate` and `mod <user> deactivate` succeed as no-ops when the
+  user is already in the requested state.
+- Inactive toggles apply live changes before committing `db.yaml`; failed live
+  changes or failed DB commits trigger best-effort live rollback.
 - `list [user]` with no filter prints users and VMs. With a user filter it
   prints that user's access list.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.

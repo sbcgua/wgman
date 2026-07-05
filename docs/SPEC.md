@@ -180,14 +180,16 @@ Reuse the `deploy` routine to update the state.
 
 ## Modify access to resources
 
-`wgman mod <name> <+res1,-res2...>`
+`wgman mod <name> <+res1,-res2...|activate|deactivate>`
 
 - calls the `check` internally for the state and config validation.
 - refuse to run if `check` detects any hard errors or ipset drift
 - check, if the user exists
-- read the agr that follows username - it must be a list of existing VMs, separated by commas (no space), prefixed by `+` or `-`
+- read the arg that follows username. If it is `activate` or `deactivate`, toggle the user's inactive state and apply live WireGuard/ipset changes immediately. Otherwise it must be a list of existing VMs, separated by commas (no space), prefixed by `+` or `-`
 - `+/-` represent intended change in access - add or remove the VM from the access list
 - update system state (deploy) - update the relevant ipsets
+- `deactivate` writes `inactive: true`, preserves the user record/comment/access list, deletes relevant managed ipset entries, and removes the WireGuard peer
+- `activate` omits the `inactive` field from written YAML, preserves the user record/comment/access list, adds the WireGuard peer, and adds relevant managed ipset entries
 
 Reuse the `deploy` routine to update the state.
 

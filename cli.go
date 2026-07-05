@@ -22,7 +22,7 @@ Commands:
   create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
   add          Alias for create
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
-  mod          Modify user VM access: mod <name> <+res1,-res2...> (supports --dry-run)
+  mod          Modify access or active state: mod <name> <+res1,-res2...|activate|deactivate> (supports --dry-run)
   help         Show this help message
 
 Global flags:

@@ -197,6 +197,13 @@ Modify resource access:
 sudo wgman mod alice +mailvm,-sandbox
 ```
 
+Deactivate or reactivate a user without deleting their DB record:
+
+```sh
+sudo wgman mod alice deactivate
+sudo wgman mod alice activate
+```
+
 Remove a user:
 
 ```sh

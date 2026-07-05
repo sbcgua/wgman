@@ -44,6 +44,18 @@ func TestParseModExpression_Invalid(t *testing.T) {
 	}
 }
 
+func TestModToggleActionParsing(t *testing.T) {
+	if !isModToggleAction("activate") {
+		t.Error("activate should be recognized as toggle action")
+	}
+	if !isModToggleAction("deactivate") {
+		t.Error("deactivate should be recognized as toggle action")
+	}
+	if isModToggleAction("enable") {
+		t.Error("enable should not be recognized as toggle action")
+	}
+}
+
 func TestPlanModAccess_AddAndRemove(t *testing.T) {
 	cfg := makeTestCfg()
 	db := makeTestDB()
@@ -106,6 +118,21 @@ func TestMod_RefusesUnknownVM(t *testing.T) {
 	}
 }
 
+func TestMod_RejectsUnknownBareOperation(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+	sys := buildCleanFakeSystem()
+	app, _, stderr := makeDeployApp(sys, "")
+	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "enable"}, app)
+	if code != 2 {
+		t.Fatalf("mod unknown bare operation exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "must start with + or -") {
+		t.Errorf("expected strict access parser error, got: %s", stderr.String())
+	}
+}
+
 func TestMod_RefusesPreExistingDrift(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -147,6 +174,64 @@ func TestMod_DryRunDoesNotWriteOrApply(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "dry-run") {
 		t.Errorf("expected dry-run output, got: %s", stdout.String())
+	}
+}
+
+func TestMod_DeactivateDryRunDoesNotWriteOrApply(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+	sys := buildCleanFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	code := cmdMod(&globalFlags{configDir: dir, dryRun: true}, []string{"alice", "deactivate"}, app)
+	if code != 0 {
+		t.Fatalf("mod deactivate --dry-run exit code = %d, want 0", code)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("db.yaml changed during deactivate dry-run")
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no applied ops in deactivate dry-run, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stdout.String(), "dry-run") || !strings.Contains(stdout.String(), "remove wg peer alice ALICE_PUB=") {
+		t.Errorf("expected dry-run peer removal output, got: %s", stdout.String())
+	}
+}
+
+func TestMod_ActivateDryRunDoesNotWriteOrApply(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+	sys := buildInactiveBobAbsentFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	code := cmdMod(&globalFlags{configDir: dir, dryRun: true}, []string{"bob", "activate"}, app)
+	if code != 0 {
+		t.Fatalf("mod activate --dry-run exit code = %d, want 0", code)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("db.yaml changed during activate dry-run")
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no applied ops in activate dry-run, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stdout.String(), "dry-run") || !strings.Contains(stdout.String(), "add wg peer bob BOB_PUB= 10.8.0.15") {
+		t.Errorf("expected dry-run peer add output, got: %s", stdout.String())
 	}
 }
 
@@ -210,6 +295,137 @@ func TestMod_SuccessWritesDBAndAppliesDelta(t *testing.T) {
 	}
 	if _, err := LoadDB(dir); err != nil {
 		t.Fatalf("updated db.yaml should load: %v", err)
+	}
+}
+
+func TestMod_DeactivateWritesInactiveDeletesIPSetsAndPeer(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+	sys := buildCleanFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "deactivate"}, app)
+	if code != 0 {
+		t.Fatalf("mod deactivate exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "applied") {
+		t.Errorf("expected applied output, got: %s", stdout.String())
+	}
+	wantOps := []string{
+		"del:wg_allow_matrix:10.8.0.10,192.168.122.100",
+		"wgdel:wg0:ALICE_PUB=",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing op %q from %v", want, sys.appliedOps)
+		}
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if !db.Users["alice"].Inactive {
+		t.Errorf("alice inactive = false, want true")
+	}
+	if got := strings.Join(db.Access["alice"], ","); got != "sandbox" {
+		t.Errorf("alice access = %q, want sandbox", got)
+	}
+}
+
+func TestMod_ActivateRemovesInactiveAddsPeerAndIPSets(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	sys := buildInactiveBobAbsentFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	code := cmdMod(&globalFlags{configDir: dir}, []string{"bob", "activate"}, app)
+	if code != 0 {
+		t.Fatalf("mod activate exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "applied") {
+		t.Errorf("expected applied output, got: %s", stdout.String())
+	}
+	wantOps := []string{
+		"wgset:wg0:BOB_PUB=:10.8.0.15",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.100:bob -> sandbox",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.101:bob -> mailvm",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing op %q from %v", want, sys.appliedOps)
+		}
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if db.Users["bob"].Inactive {
+		t.Errorf("bob inactive = true, want false")
+	}
+	if db.Users["bob"].Comment != "on leave" {
+		t.Errorf("bob comment = %q, want on leave", db.Users["bob"].Comment)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db.yaml: %v", err)
+	}
+	if strings.Contains(string(data), "inactive: false") || strings.Contains(string(data), "inactive: true") {
+		t.Errorf("activated bob should omit inactive field, got:\n%s", string(data))
+	}
+}
+
+func TestMod_RedundantTogglesAreNoOps(t *testing.T) {
+	tests := []struct {
+		name       string
+		writeData  func(*testHelper, string)
+		sys        *fakeSystem
+		args       []string
+		wantOutput string
+	}{
+		{
+			name:       "activate active user",
+			writeData:  writeDeployTestData,
+			sys:        buildCleanFakeSystem(),
+			args:       []string{"alice", "activate"},
+			wantOutput: "already active",
+		},
+		{
+			name:       "deactivate inactive user",
+			writeData:  writeDeployInactiveBobTestData,
+			sys:        buildInactiveBobAbsentFakeSystem(),
+			args:       []string{"bob", "deactivate"},
+			wantOutput: "already inactive",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHelper(t)
+			dir := h.makeTempDir()
+			tc.writeData(h, dir)
+			app, stdout, _ := makeDeployApp(tc.sys, "")
+			code := cmdMod(&globalFlags{configDir: dir}, tc.args, app)
+			if code != 0 {
+				t.Fatalf("mod redundant toggle exit code = %d, want 0", code)
+			}
+			if !strings.Contains(stdout.String(), tc.wantOutput) {
+				t.Errorf("expected %q output, got: %s", tc.wantOutput, stdout.String())
+			}
+			if len(tc.sys.appliedOps) != 0 {
+				t.Errorf("expected no applied ops, got: %v", tc.sys.appliedOps)
+			}
+		})
 	}
 }
 

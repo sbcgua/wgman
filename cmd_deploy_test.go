@@ -69,6 +69,7 @@ sets:
   bob:
     ip: 10.8.0.15
     pub: BOB_PUB=
+    comment: on leave
     inactive: true
 vms:
   sandbox: 192.168.122.100

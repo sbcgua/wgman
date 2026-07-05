@@ -48,6 +48,16 @@
   removal, confirmation rejection applying nothing, peer removal failure
   returning exit code 1, and unrelated hard errors still being refused.
 
+## Phase 5 Verification
+
+- `GOCACHE=/tmp/wgman-gocache go test ./...` passed.
+- `GOCACHE=/tmp/wgman-gocache go vet ./...` passed with no output.
+- `gofmt -l .` passed with no output.
+- Tests cover toggle parsing, unknown bare operation rejection, activate and
+  deactivate dry-runs, deactivate writing `inactive: true` and removing live
+  state, activate omitting `inactive` and restoring live state, comment/access
+  preservation, and redundant toggle no-ops.
+
 ## Behavior Decisions
 
 - User metadata fields are rendered in deterministic DB output after `pub`.
@@ -68,6 +78,10 @@
   inactive cleanup ordered as ipset entry deletion followed by peer removal.
 - Deploy-driven cleanup does not change `db.yaml`, so peer removal failures are
   reported directly without DB rollback.
+- Redundant `mod <user> activate` and `mod <user> deactivate` succeed as no-op
+  commands with a clear message.
+- Inactive toggles apply live changes before saving `db.yaml`, with best-effort
+  live rollback on live failure after partial apply or DB save failure.
 
 ## Completed Phases
 
@@ -76,7 +90,8 @@
 - Phase 2: Create/Add Comment Flag.
 - Phase 3: Inactive State Planning And Check Semantics.
 - Phase 4: Deploy Reconciliation For Inactive Users.
+- Phase 5: Mod Activate/Deactivate.
 
 ## Known Gaps Or Follow-Up Work
 
-- Phase 5 and later are not implemented in this pass.
+- Phase 6 and later are not implemented in this pass.
