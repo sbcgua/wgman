@@ -1,12 +1,12 @@
 # Review 1: Phases 0-4
 
-Review scope: current Go implementation after phases 0-4, checked against [docs/SPEC.md](docs/SPEC.md), [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md), and [PROGRESS.md](PROGRESS.md).
+Review scope: current Go implementation after phases 0-4, checked against [docs/SPEC.md](../SPEC.md), [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md), and [PROGRESS.md](PROGRESS.md).
 
 ## Findings
 
 ### High: ipset parsing is too permissive for safe deploy planning
 
-References: [parse_ipset.go](parse_ipset.go:16), [parse_ipset.go](parse_ipset.go:37), [check.go](check.go:105), [check.go](check.go:120)
+References: [parse_ipset.go](../../parse_ipset.go:16), [parse_ipset.go](../../parse_ipset.go:37), [check.go](../../check.go:105), [check.go](../../check.go:120)
 
 `ParseIPSetEntries` currently skips `create` lines and stores only raw `add` entries. It does not validate the live set name, set type, family, or entry shape. That means a malformed managed entry, a wrong set type, or an unexpected `add` line can be interpreted as ordinary drift and turned into a delete delta.
 
@@ -20,7 +20,7 @@ This matters before phase 6 because `deploy` will trust the `CheckResult.Deltas`
 
 ### Medium: command-level code is not injectable enough for phase 5+
 
-References: [cli.go](cli.go:95), [cmd_list_show.go](cmd_list_show.go:13), [cmd_list_show.go](cmd_list_show.go:92)
+References: [cli.go](../../cli.go:95), historical `cmd_list_show.go:13`, historical `cmd_list_show.go:92`
 
 The command handlers instantiate `&RealSystem{}` directly and write directly to `os.Stdout`/`os.Stderr`. Current tests cover inner helpers like `runList` and `runShow`, but not the real command wiring. That is manageable for read-only commands, but it will become awkward for `deploy`, `mod`, `create`, and `remove`, where tests need fake system calls, fake stdin confirmation, dry-run behavior, and captured output.
 
@@ -28,7 +28,7 @@ Before phase 5, introduce a small app/deps boundary, for example carrying `Syste
 
 ### Medium: command argument validation is too loose
 
-References: [cli.go](cli.go:95), [cmd_list_show.go](cmd_list_show.go:34), [cmd_list_show.go](cmd_list_show.go:92)
+References: [cli.go](../../cli.go:95), historical `cmd_list_show.go:34`, historical `cmd_list_show.go:92`
 
 `cmdCheck` ignores positional args, `cmdShow` ignores positional args, and `cmdList` silently uses only the first positional arg. Examples like `wgman check alice`, `wgman show alice`, or `wgman list alice bob` should fail fast instead of ignoring operator input.
 
@@ -41,7 +41,7 @@ This is worth fixing before adding write commands, because silent extra argument
 
 ### Medium: IPv4 validation currently accepts IPv6 addresses
 
-References: [validate.go](validate.go:15), [validate.go](validate.go:24)
+References: [validate.go](../../validate.go:15), [validate.go](../../validate.go:24)
 
 `ValidateOffline` uses `net.ParseIP(...) == nil`, which accepts IPv6. The spec and ipset/WireGuard examples are IPv4-oriented, and the unit-test strategy calls out IPv4 specifically. User and VM validation should require `ip := net.ParseIP(value); ip != nil && ip.To4() != nil`.
 
@@ -49,7 +49,7 @@ This should be corrected before `create` and `mod`, because those phases will mu
 
 ### Low: real command errors lose useful stderr for read operations
 
-References: [system_real.go](system_real.go:38), [system_real.go](system_real.go:46), [system_real.go](system_real.go:95)
+References: [system_real.go](../../system_real.go:38), [system_real.go](../../system_real.go:46), [system_real.go](../../system_real.go:95)
 
 `WGDump`, `IPSetList`, and `WGPubKey` use `Output()`, so stderr from failed commands is discarded. The write-side methods already use `CombinedOutput()`. Using `CombinedOutput()` consistently would make target-host failures easier to diagnose.
 

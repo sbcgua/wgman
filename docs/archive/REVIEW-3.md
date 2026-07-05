@@ -1,12 +1,12 @@
 # Review 3: Phases 0-9
 
-Review scope: current Go implementation after Phase 9, checked against [docs/SPEC.md](docs/SPEC.md), [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md), [PROGRESS.md](PROGRESS.md), and prior findings in [REVIEW-2.md](REVIEW-2.md).
+Review scope: current Go implementation after Phase 9, checked against [docs/SPEC.md](../SPEC.md), [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md), [PROGRESS.md](PROGRESS.md), and prior findings in [REVIEW-2.md](REVIEW-2.md).
 
 ## Findings
 
 ### High: `create` and `remove` can leave hard WireGuard drift after partial failures
 
-References: [cmd_create.go](cmd_create.go:172), [cmd_create.go](cmd_create.go:178), [cmd_create.go](cmd_create.go:182), [cmd_remove.go](cmd_remove.go:73), [cmd_remove.go](cmd_remove.go:78), [cmd_remove.go](cmd_remove.go:82), [cmd_deploy.go](cmd_deploy.go:67)
+References: [cmd_create.go](../../cmd_create.go:172), [cmd_create.go](../../cmd_create.go:178), [cmd_create.go](../../cmd_create.go:182), [cmd_remove.go](../../cmd_remove.go:73), [cmd_remove.go](../../cmd_remove.go:78), [cmd_remove.go](../../cmd_remove.go:82), [cmd_deploy.go](../../cmd_deploy.go:67)
 
 Both commands write `db.yaml` before all live system operations complete. The comments say later failures are visible as drift and can be reconciled with `deploy`, but that is only true for ipset-only mismatches. WireGuard peer mismatches are hard errors, and `deploy` refuses hard errors.
 
@@ -19,7 +19,7 @@ Before real-host use, decide and implement a recovery policy. Good options are c
 
 ### Medium: `--dry-run` is accepted by `create` but ignored
 
-References: [cli.go](cli.go:26), [cli.go](cli.go:80), [cmd_create.go](cmd_create.go:93), [docs/SPEC.md](docs/SPEC.md:81)
+References: [cli.go](../../cli.go:26), [cli.go](../../cli.go:80), [cmd_create.go](../../cmd_create.go:93), [docs/SPEC.md](../SPEC.md:81)
 
 The spec says `--dry-run` is supported by `deploy`, `remove`, and `mod`, not `create`. Because the flag is parsed globally, `wgman create --dry-run alice` currently proceeds with a real create. That is a footgun: the global help says dry-run shows planned changes without applying them.
 
@@ -27,13 +27,13 @@ For Phase 10, either reject `--dry-run` on unsupported commands with exit code 2
 
 ### Low: README still marks implemented commands as not implemented
 
-Reference: [README.md](README.md:169)
+Reference: [README.md](../../README.md:169)
 
 The README still says `create`, `mod`, and `remove` are "planned by the spec but not implemented yet". Phase 9 has implemented all three. This belongs in Phase 10 documentation alignment.
 
 ### Low: `SaveDBAtomic` is atomic but not durable
 
-Reference: [config.go](config.go:156)
+Reference: [config.go](../../config.go:156)
 
 `SaveDBAtomic` writes a same-directory temp file and renames it over `db.yaml`, which is the right basic atomic pattern. It does not `fsync` the file or directory before/after rename. That is probably acceptable for now, but Review-2 explicitly said "fsync where practical". If the tool is intended for real host administration, add file sync and best-effort directory sync on Unix targets, with tests kept platform-tolerant.
 

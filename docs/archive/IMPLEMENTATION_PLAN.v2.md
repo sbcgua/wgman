@@ -2,7 +2,7 @@
 
 This document is a handoff plan for a fresh agent implementing `wgman`.
 
-Primary specification: [docs/SPEC.md](docs/SPEC.md). Do not duplicate or reinterpret command behavior here when the spec is more precise.
+Primary specification: [docs/SPEC.md](../SPEC.md). Do not duplicate or reinterpret command behavior here when the spec is more precise.
 
 ## Suggested Skills
 
@@ -151,7 +151,7 @@ Functionality:
 
 Implementation notes:
 
-- Treat configured ipsets as fully owned by `wgman`, per [docs/SPEC.md](docs/SPEC.md).
+- Treat configured ipsets as fully owned by `wgman`, per [docs/SPEC.md](../SPEC.md).
 - Formatting should be readable, but tests should primarily assert structured `CheckResult`.
 - Do not apply changes in this phase.
 
@@ -415,7 +415,7 @@ Functionality:
 - Ensure final line of each command concisely reports success/failure.
 - Ensure exit codes are consistent.
 - Ensure README commands match implementation.
-- Add any missing examples to docs only if they are not already covered by [docs/SPEC.md](docs/SPEC.md).
+- Add any missing examples to docs only if they are not already covered by [docs/SPEC.md](../SPEC.md).
 
 Tests for this phase:
 

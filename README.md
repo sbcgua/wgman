@@ -2,7 +2,7 @@
 
 `wgman` is a command-line tool for managing WireGuard users and their access to internal VM resources through WireGuard peers and ipset-based firewall rules.
 
-Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md). The implementation plan is in [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md).
+Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md).
 
 ## Development Prerequisites
 

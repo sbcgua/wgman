@@ -1,12 +1,12 @@
 # Review 2: Phases 0-6
 
-Review scope: current Go implementation after phases 0-6, checked against [docs/SPEC.md](docs/SPEC.md), [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md), [PROGRESS.md](PROGRESS.md), and prior findings in [REVIEW-1.md](REVIEW-1.md).
+Review scope: current Go implementation after phases 0-6, checked against [docs/SPEC.md](../SPEC.md), [IMPLEMENTATION_PLAN.v2.md](IMPLEMENTATION_PLAN.v2.md), [PROGRESS.md](PROGRESS.md), and prior findings in [REVIEW-1.md](REVIEW-1.md).
 
 ## Findings
 
 ### Medium: live ipset create-line name is not validated against the configured set
 
-References: [check.go](check.go:220), [check.go](check.go:240), [parse_ipset.go](parse_ipset.go:19), [check_test.go](check_test.go:325)
+References: [check.go](../../check.go:220), [check.go](../../check.go:240), [parse_ipset.go](../../parse_ipset.go:19), [check_test.go](../../check_test.go:325)
 
 Review-1 required strict ipset parsing/checking before deploy could trust deltas. Most of that was implemented: `ParseIPSet` now records set name/type, rejects `add` lines before `create`, rejects duplicate `create` lines, rejects `add` lines for a different set than the parsed `create`, and `check` validates set types and entry shapes.
 
@@ -21,7 +21,7 @@ would be accepted while checking `wg_allow_all`, because the parser only verifie
 
 ### Low: duplicate access entries in `db.yaml` are not reported
 
-References: [config.go](config.go:128), [validate.go](validate.go:34), [check.go](check.go:150)
+References: [config.go](../../config.go:128), [validate.go](../../validate.go:34), [check.go](../../check.go:150)
 
 `access` lists are validated for known users/VMs and invalid `*` mixing, but duplicate entries such as `alice: [sandbox, sandbox]` are accepted. `computeExpectedIPSets` collapses duplicates into a map, so check/deploy may report a clean state while the intended database still contains redundant access entries.
 
