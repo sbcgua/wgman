@@ -70,6 +70,7 @@ when the chronological handoff is needed.
   users with empty access are omitted from `access`.
 - Generated client configs are written as `<user>.vpn.conf` in the current
   working directory, mode `0600`, and are never overwritten.
+- Generated client configs strip comment-only lines from `user.conf.template`.
 - `create` order: write client config, add WireGuard peer, apply ipset deltas,
   commit `db.yaml`. Failures trigger best-effort rollback.
 - `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
@@ -86,6 +87,7 @@ when the chronological handoff is needed.
 - `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
 - `create` and `mod` do not prompt after validation.
+- `add` is a CLI alias for `create`.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
 - `list [user]` with no filter prints users and VMs. With a user filter it

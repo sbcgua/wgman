@@ -45,7 +45,7 @@ func TestRunApp_HelpOutputSmoke(t *testing.T) {
 		t.Fatalf("help exit code = %d, want 0", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "--dry-run"} {
+	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "--dry-run"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q:\n%s", want, out)
 		}
@@ -212,5 +212,28 @@ func TestRunApp_CreateRejectsDryRun(t *testing.T) {
 	}
 	if !strings.Contains(errBuf.String(), "does not support --dry-run") {
 		t.Errorf("expected unsupported dry-run error, got: %s", errBuf.String())
+	}
+}
+
+func TestRunApp_AddAliasCreatesUser(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	app, stdout, stderr := makeDeployApp(sys, "")
+	code := runApp([]string{"add", "--config-dir", dir, "carol"}, app)
+	if code != 0 {
+		t.Fatalf("add alias exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "created carol") {
+		t.Errorf("expected create success output, got: %s", stdout.String())
+	}
+	if len(sys.appliedOps) == 0 {
+		t.Fatalf("expected live operations for add alias")
 	}
 }

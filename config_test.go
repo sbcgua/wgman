@@ -297,7 +297,7 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read db.yaml: %v", err)
 	}
-	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
+	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
 	if string(data) != want {
 		t.Errorf("db.yaml =\n%s\nwant:\n%s", string(data), want)
 	}

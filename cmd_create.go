@@ -342,7 +342,7 @@ func renderClientConfig(templatePath, privateKey, clientIP, serverPublicKey stri
 	if err != nil {
 		return "", fmt.Errorf("read user.conf.template: %w", err)
 	}
-	out := string(data)
+	out := stripCommentLines(string(data))
 	replacements := map[string]string{
 		"$CLIENT_PRIVATE_KEY": privateKey,
 		"$CLIENT_VPN_IP":      clientIP,
@@ -352,6 +352,19 @@ func renderClientConfig(templatePath, privateKey, clientIP, serverPublicKey stri
 		out = strings.ReplaceAll(out, placeholder, value)
 	}
 	return out, nil
+}
+
+func stripCommentLines(s string) string {
+	lines := strings.SplitAfter(s, "\n")
+	var out strings.Builder
+	for _, line := range lines {
+		withoutNewline := strings.TrimRight(line, "\r\n")
+		if strings.HasPrefix(strings.TrimSpace(withoutNewline), "#") {
+			continue
+		}
+		out.WriteString(line)
+	}
+	return out.String()
 }
 
 func writeClientConfigNoOverwrite(path, content string) error {

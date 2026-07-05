@@ -19,6 +19,7 @@ Commands:
   init-ipsets  Create the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
   create       Create a new VPN user: create <name> [ip] [res1,res2...]
+  add          Alias for create
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
   mod          Modify user VM access: mod <name> <+res1,-res2...> (supports --dry-run)
   help         Show this help message
@@ -129,7 +130,7 @@ func runApp(args []string, app *App) int {
 		return cmdDeploy(gf, cmdArgs, app)
 	case "mod":
 		return cmdMod(gf, cmdArgs, app)
-	case "create":
+	case "create", "add":
 		return cmdCreate(gf, cmdArgs, app)
 	case "remove":
 		return cmdRemove(gf, cmdArgs, app)

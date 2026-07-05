@@ -234,7 +234,13 @@ func marshalDBDeterministic(db *DB) ([]byte, error) {
 	if err := enc.Close(); err != nil {
 		return nil, fmt.Errorf("close db.yaml encoder: %w", err)
 	}
-	return buf.Bytes(), nil
+	return addBlankLinesBetweenDBSections(buf.Bytes()), nil
+}
+
+func addBlankLinesBetweenDBSections(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("\nvms:\n"), []byte("\n\nvms:\n"))
+	data = bytes.ReplaceAll(data, []byte("\naccess:\n"), []byte("\n\naccess:\n"))
+	return data
 }
 
 func usersNode(users map[string]UserEntry) *yaml.Node {

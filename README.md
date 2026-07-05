@@ -106,7 +106,7 @@ PostUp = /usr/local/sbin/wgman-firewall-hook up
 PreDown = /usr/local/sbin/wgman-firewall-hook down
 ```
 
-The script manages only its dedicated `iptables` chains and parent jump rules. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
+The script manages only its dedicated `iptables` chains and parent jump rules. It allows TCP and ICMP forwarding to resources permitted by the managed ipsets. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
 
 ```sh
 sudo /usr/local/sbin/wgman-firewall-hook reassert
@@ -175,6 +175,8 @@ Create a user with an auto-assigned IP:
 
 ```sh
 sudo wgman create alice
+# Equivalent alias:
+sudo wgman add alice
 ```
 
 Create a user with an explicit IP and resource access:
