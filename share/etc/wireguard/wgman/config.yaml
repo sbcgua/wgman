@@ -1,0 +1,4 @@
+interface: wg0
+sets:
+  all: wg_allow_all
+  matrix: wg_allow_matrix

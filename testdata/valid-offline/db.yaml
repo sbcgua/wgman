@@ -1,0 +1,23 @@
+users:
+  admin:
+    ip: 10.8.0.5
+    pub: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  alice:
+    ip: 10.8.0.10
+    pub: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+  bob:
+    ip: 10.8.0.15
+    pub: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=
+
+vms:
+  sandbox: 192.168.122.100
+  mailvm: 192.168.122.101
+
+access:
+  admin:
+    - "*"
+  alice:
+    - sandbox
+  bob:
+    - sandbox
+    - mailvm

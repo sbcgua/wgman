@@ -1,0 +1,106 @@
+# Implementation Notes
+
+These notes capture project conventions and design decisions that are useful for
+future changes. They intentionally omit phase history; use
+[archive/PROGRESS.md](archive/PROGRESS.md) only when the chronological handoff
+is needed.
+
+## Configuration And Data
+
+- Default config directory: `/etc/wireguard/wgman` (`defaultConfigDir`).
+- Config files are `config.yaml`, `db.yaml`, and `user.conf.template`.
+- YAML loading uses `yaml.Decoder.KnownFields(true)`, so unknown fields are
+  rejected.
+- User and VM names must match `^[A-Za-z0-9_-]+$`.
+- Names are case-sensitive for lookup, but case-only conflicts are rejected
+  with simple ASCII folding (`caseFold`).
+- User and VM IPs must be IPv4. IPv6 and non-IP values are hard errors.
+- User IPs in `db.yaml` are stored as plain IPv4 values, without `/32`.
+- Duplicate user IPs, duplicate public keys, duplicate access entries, and
+  access references to unknown users or VMs are rejected.
+- Access entry `"*"` means all-access/admin and must be the only entry for
+  that user.
+- Private keys are never written to `db.yaml`.
+
+## System Boundaries
+
+- All external system interaction goes through `SystemAdapter`.
+- Real command execution lives in `system_real.go`; tests should use
+  `fakeSystem` from `testhelpers_test.go`.
+- `exec.Command` is called with argument slices only.
+- `InterfaceSubnet` uses Go's `net` package rather than shelling out.
+- Root checks belong in command handlers. Core routines such as `Check` remain
+  root-agnostic and fakeable.
+- The CLI dependency-injection boundary is `App` in `cli.go`.
+
+## Check And Drift Policy
+
+- `CheckResult` separates hard errors from ipset drift.
+- `deploy` may reconcile ipset drift when there are no hard errors.
+- `create`, `remove`, `mod`, `list`, and `show` require a fully clean
+  `CheckResult`.
+- Configured ipsets are fully owned by `wgman`; unexpected entries in those
+  sets are safe for `deploy` to delete.
+- Missing configured ipsets are hard errors and should suggest
+  `wgman init-ipsets`.
+- `CheckResult.HardErrors`, `Drift`, and `Deltas` are sorted before return for
+  stable output and assertions.
+- `CheckResult.WGDump` is populated after a successful WireGuard dump parse and
+  can be nil if checking stops early.
+
+## WireGuard And Ipset Parsing
+
+- `wg show <interface> dump` peer allowed IPs are normalized from `/32` to
+  plain IPv4.
+- Multiple WireGuard allowed IPs for one managed peer are rejected.
+- `ParseIPSet` returns set name, set type, and entries.
+- Parsed ipset `create` names must match the configured set being checked.
+- `add` lines must refer to the same set as the `create` line.
+- All-access set type is `hash:ip`; entries must be one IPv4 value.
+- Matrix set type is `hash:net,net`; entries must be two IPv4 or IPv4/CIDR
+  values separated by a comma.
+- Malformed managed ipset entries are hard errors, not drift to delete.
+- Matrix comments use the format `<username> -> <vmname>`.
+
+## Writes And Rollback
+
+- `SaveDBAtomic` writes a same-directory temporary file, chmods it `0600`,
+  syncs it, renames it over `db.yaml`, then syncs the config directory.
+- Deterministic DB output sorts users, VMs, and access owners.
+- Access lists are normalized to sorted, duplicate-free lists before writing;
+  users with empty access are omitted from `access`.
+- Generated client configs are written as `<user>.vpn.conf` in the current
+  working directory, mode `0600`, and are never overwritten.
+- Generated client configs strip comment-only lines from `user.conf.template`.
+- `create` order: write client config, add WireGuard peer, apply ipset deltas,
+  commit `db.yaml`. Failures trigger best-effort rollback.
+- `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
+  `db.yaml`. Failures trigger best-effort rollback.
+- `remove` does not delete existing generated client config files.
+- `mod` writes `db.yaml` before applying ipset deltas; it refuses to run unless
+  the pre-command state is clean.
+
+## Command Behavior
+
+- `help`, no args, `-h`, and `--help` print usage and exit 0.
+- Exit code 2 is used for usage and argument errors.
+- Exit code 1 is used for validation, system, or write failures.
+- `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
+- `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
+- `create` and `mod` do not prompt after validation.
+- `add` is a CLI alias for `create`.
+- `deploy`, `remove`, and `mod` print planned deltas before applying or
+  reporting dry-run results.
+- `list [user]` with no filter prints users and VMs. With a user filter it
+  prints that user's access list.
+- `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.
+- Endpoint formatting strips the port and preserves `(none)`.
+
+## Tests
+
+- Unit tests should not require root, WireGuard, ipset, or firewall tools.
+- Prefer table-driven tests and small fixtures for command output parsers.
+- Use temporary config directories and `fakeSystem` for command tests.
+- Failure-injection support exists for ipset add/delete/create, WireGuard
+  peer add/delete, key generation, public key derivation, and DB save wrappers.
+- Use `GOCACHE` under a writable temp directory in restricted sandboxes.

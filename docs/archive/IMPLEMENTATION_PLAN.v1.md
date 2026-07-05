@@ -2,7 +2,7 @@
 
 This document is a handoff plan for a fresh agent implementing `wgman`.
 
-Primary specification: [docs/SPEC.md](docs/SPEC.md). Do not re-derive behavior from this plan when the spec is more precise; use this file for sequencing, engineering approach, and environment setup.
+Primary specification: [docs/SPEC.md](../SPEC.md). Do not re-derive behavior from this plan when the spec is more precise; use this file for sequencing, engineering approach, and environment setup.
 
 ## Suggested Skills
 
@@ -14,7 +14,7 @@ Primary specification: [docs/SPEC.md](docs/SPEC.md). Do not re-derive behavior f
 - Language choice is Go.
 - The agent starts in an empty dev container with Go installed.
 - The dev container does not have WireGuard, `iptables`, or `ipset`, so normal development must rely on pure unit tests and fake system adapters.
-- Runtime target remains a Linux host with WireGuard tools and ipset/firewall state already configured, as described in [docs/SPEC.md](docs/SPEC.md).
+- Runtime target remains a Linux host with WireGuard tools and ipset/firewall state already configured, as described in [docs/SPEC.md](../SPEC.md).
 - The final deliverable is one executable file named `wgman`; the source can be split into multiple Go files for maintainability.
 
 ## Phase 0: Bootstrap The Go Project
@@ -120,7 +120,7 @@ Do not attempt to shell-parse by string concatenation. Use `exec.Command` with a
 
 ## Phase 4: Validation And Check Routine
 
-Implement the internal check routine as the central state reconciliation function. Its behavior is defined in [docs/SPEC.md](docs/SPEC.md), especially the "Check", "Deploy", "Interview findings", and "Unit testing strategy" sections.
+Implement the internal check routine as the central state reconciliation function. Its behavior is defined in [docs/SPEC.md](../SPEC.md), especially the "Check", "Deploy", "Interview findings", and "Unit testing strategy" sections.
 
 Recommended design:
 
@@ -273,7 +273,7 @@ Suggested smoke-test sequence:
 
 2. Prepare a non-production WireGuard interface and dedicated test ipsets.
 
-3. Create `/etc/wireguard/wgman/config.yaml`, `/etc/wireguard/wgman/db.yaml`, and `/etc/wireguard/wgman/user.conf.template` based on [docs/SPEC.md](docs/SPEC.md).
+3. Create `/etc/wireguard/wgman/config.yaml`, `/etc/wireguard/wgman/db.yaml`, and `/etc/wireguard/wgman/user.conf.template` based on [docs/SPEC.md](../SPEC.md).
 
 4. Run:
 
@@ -310,4 +310,4 @@ Do not block initial implementation on these unless they affect a current phase:
 - Exact order of `db.yaml` mutation versus live system mutation for `create`, `remove`, and `mod`.
 - Whether to add a hidden/test-only command or fixture mode. Prefer not to unless tests need it.
 
-If any decision changes command behavior, update [docs/SPEC.md](docs/SPEC.md) before coding the changed behavior.
+If any decision changes command behavior, update [docs/SPEC.md](../SPEC.md) before coding the changed behavior.
