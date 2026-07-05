@@ -71,9 +71,21 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		dbByPub[u.Pub] = name
 	}
 
-	// Every db user must have a matching WG peer with the correct IP.
+	// Every active db user must have a matching WG peer with the correct IP.
+	// Inactive users are intentionally absent; any live peer for them is safe
+	// removable drift that deploy can reconcile.
 	for name, u := range db.Users {
 		peer, ok := wgByPub[u.Pub]
+		if u.Inactive {
+			if ok {
+				result.PeerDeltas = append(result.PeerDeltas, WGPeerDeltaOp{
+					User:   name,
+					PubKey: u.Pub,
+					Remove: true,
+				})
+			}
+			continue
+		}
 		if !ok {
 			result.HardErrors = append(result.HardErrors,
 				fmt.Sprintf("user %q (pub %s) not found in WireGuard peers", name, u.Pub))
@@ -144,6 +156,12 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		}
 		return result.Deltas[i].Entry < result.Deltas[j].Entry
 	})
+	sort.Slice(result.PeerDeltas, func(i, j int) bool {
+		if result.PeerDeltas[i].User != result.PeerDeltas[j].User {
+			return result.PeerDeltas[i].User < result.PeerDeltas[j].User
+		}
+		return result.PeerDeltas[i].PubKey < result.PeerDeltas[j].PubKey
+	})
 
 	return result
 }
@@ -157,7 +175,7 @@ func computeExpectedIPSets(db *DB) (allExpected, matrixExpected map[string]strin
 
 	for user, vms := range db.Access {
 		u, ok := db.Users[user]
-		if !ok {
+		if !ok || u.Inactive {
 			continue
 		}
 		for _, vm := range vms {

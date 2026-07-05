@@ -93,8 +93,9 @@ Global flags:
   - check all user ips are in wg interface subnet
   - check VMs defined in access section are present in vms sectio
   - other reasonable consistency checks
-- check all wg users (hashes) are in file users (hash) and that ips are the same
-- check all file users (hashes) are in wg
+- check all wg users (hashes) are in file users (hash) and that active users' ips are the same
+- check all active file users (hashes) are in wg
+- inactive file users are expected to be absent from WireGuard and managed ipsets; if an inactive user's WireGuard peer or managed ipset entries are still present, report removable drift
 - read ip sets defined in `config.sets` - `ipset list <setname> -o save`
 - check = matrix,all
 
@@ -212,7 +213,9 @@ The following decisions were agreed during planning and should guide implementat
 - `create`, `remove`, and `mod` must refuse to run if `check` reports either hard errors or ipset drift. Direct changes to `db.yaml` should be applied through a clean state.
 - `deploy` may run when the only detected problem is ipset drift. It must treat `db.yaml` as the intended access state and reconcile the configured ipsets to it.
 - Internal `check` must prepare concrete ipset deltas so command logic can either report them or apply them.
+- Internal `check` must prepare concrete WireGuard peer removal deltas for inactive users that still exist live.
 - The configured `sets.all` and `sets.matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
+- Inactive users remain in `db.yaml` but are excluded from expected live WireGuard peers and managed ipsets.
 - `deploy` applies deltas only: add missing expected entries and delete unexpected entries. It must not flush/rebuild whole ipsets unless a future explicit option is added.
 
 ### Key material and generated configs

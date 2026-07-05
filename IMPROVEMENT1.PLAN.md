@@ -148,8 +148,7 @@ Behavior:
 - Inactive users are excluded from expected WireGuard peers.
 - Inactive users are excluded from expected all-access and matrix ipset state.
 - If an inactive user's WireGuard peer exists live, this must be actionable by `deploy`.
-- If inactive user's ipset entries exist live, they should be ipset drift with
-  delete deltas.
+- If inactive user's ipset entries exist live, they should be ipset drift with delete deltas.
 
 Important design point:
 

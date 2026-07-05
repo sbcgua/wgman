@@ -41,12 +41,21 @@ func cmdCheck(gf *globalFlags, args []string, app *App) int {
 	return 0
 }
 
-// printCheckErrors writes hard errors and ipset drift from result to w.
+// printCheckErrors writes hard errors, WireGuard drift, and ipset drift from
+// result to w.
 func printCheckErrors(result *CheckResult, w io.Writer) {
 	if len(result.HardErrors) > 0 {
 		fmt.Fprintln(w, "check: hard errors:")
 		for _, e := range result.HardErrors {
 			fmt.Fprintln(w, "  -", e)
+		}
+	}
+	if len(result.PeerDeltas) > 0 {
+		fmt.Fprintln(w, "check: WireGuard drift:")
+		for _, d := range result.PeerDeltas {
+			if d.Remove {
+				fmt.Fprintf(w, "  - inactive user %q peer is present and can be removed\n", d.User)
+			}
 		}
 	}
 	if len(result.Drift) > 0 {

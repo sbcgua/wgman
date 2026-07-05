@@ -39,11 +39,16 @@ is needed.
 ## Check And Drift Policy
 
 - `CheckResult` separates hard errors from ipset drift.
+- `CheckResult.PeerDeltas` holds safe WireGuard peer cleanup operations, such
+  as removing live peers for inactive DB users.
 - `deploy` may reconcile ipset drift when there are no hard errors.
 - `create`, `remove`, `mod`, `list`, and `show` require a fully clean
   `CheckResult`.
 - Configured ipsets are fully owned by `wgman`; unexpected entries in those
   sets are safe for `deploy` to delete.
+- Inactive users are excluded from expected WireGuard peers and managed
+  ipsets. Inactive users present in live WireGuard are removable drift, while
+  active users missing from WireGuard remain hard errors.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
 - `CheckResult.HardErrors`, `Drift`, and `Deltas` are sorted before return for

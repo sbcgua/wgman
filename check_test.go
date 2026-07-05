@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +56,25 @@ func buildCleanFakeSystem() *fakeSystem {
 	return sys
 }
 
+func makeInactiveBobDB() *DB {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+	return db
+}
+
+func buildInactiveBobAbsentFakeSystem() *fakeSystem {
+	sys := buildCleanFakeSystem()
+	sys.wgDumpResult = "SERVER_PRIV=\tSERVER_PUB=\t51820\toff\n" +
+		"ADMIN_PUB=\t(none)\t(none)\t10.8.0.5/32\t0\t0\t0\toff\n" +
+		"ALICE_PUB=\t(none)\t192.168.1.100:50001\t10.8.0.10/32\t1748000000\t102400\t204800\toff\n"
+	sys.ipsetResults["wg_allow_matrix"] =
+		"create wg_allow_matrix hash:net,net family inet comment\n" +
+			"add wg_allow_matrix 10.8.0.10,192.168.122.100 comment \"alice -> sandbox\"\n"
+	return sys
+}
+
 // ---- tests ----
 
 func TestCheck_CleanState(t *testing.T) {
@@ -70,6 +90,84 @@ func TestCheck_CleanState(t *testing.T) {
 	}
 	if !result.OK() {
 		t.Error("expected OK()")
+	}
+}
+
+func TestCheck_InactiveUserAbsentFromWGAndIPSetsIsClean(t *testing.T) {
+	result := Check(makeTestCfg(), makeInactiveBobDB(), buildInactiveBobAbsentFakeSystem())
+	if len(result.HardErrors) != 0 {
+		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+	}
+	if len(result.PeerDeltas) != 0 {
+		t.Errorf("expected no peer deltas, got: %v", result.PeerDeltas)
+	}
+	if len(result.Drift) != 0 {
+		t.Errorf("expected no ipset drift, got: %v", result.Drift)
+	}
+	if len(result.Deltas) != 0 {
+		t.Errorf("expected no ipset deltas, got: %v", result.Deltas)
+	}
+	if !result.OK() {
+		t.Error("expected OK()")
+	}
+}
+
+func TestCheck_InactiveUserPresentInWGProducesPeerDelta(t *testing.T) {
+	sys := buildInactiveBobAbsentFakeSystem()
+	sys.wgDumpResult += "BOB_PUB=\t(none)\t(none)\t10.8.0.15/32\t0\t0\t0\toff\n"
+
+	result := Check(makeTestCfg(), makeInactiveBobDB(), sys)
+	if len(result.HardErrors) != 0 {
+		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+	}
+	if len(result.Drift) != 0 {
+		t.Errorf("expected no ipset drift, got: %v", result.Drift)
+	}
+	if len(result.PeerDeltas) != 1 {
+		t.Fatalf("peer deltas = %+v, want one", result.PeerDeltas)
+	}
+	delta := result.PeerDeltas[0]
+	if delta.User != "bob" || delta.PubKey != "BOB_PUB=" || !delta.Remove {
+		t.Errorf("peer delta = %+v, want bob removal", delta)
+	}
+	if result.OK() {
+		t.Error("expected OK() false when peer cleanup is pending")
+	}
+	if !result.Clean() {
+		t.Error("expected Clean() true for removable inactive peer drift")
+	}
+}
+
+func TestCheck_InactiveUserIPSetEntriesProduceDeleteDeltas(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	sys.wgDumpResult = "SERVER_PRIV=\tSERVER_PUB=\t51820\toff\n" +
+		"ADMIN_PUB=\t(none)\t(none)\t10.8.0.5/32\t0\t0\t0\toff\n" +
+		"ALICE_PUB=\t(none)\t192.168.1.100:50001\t10.8.0.10/32\t1748000000\t102400\t204800\toff\n"
+
+	result := Check(makeTestCfg(), makeInactiveBobDB(), sys)
+	if len(result.HardErrors) != 0 {
+		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+	}
+	if len(result.PeerDeltas) != 0 {
+		t.Errorf("expected no peer deltas, got: %v", result.PeerDeltas)
+	}
+	if !anyContains(result.Drift, "unexpected entry 10.8.0.15,192.168.122.100") ||
+		!anyContains(result.Drift, "unexpected entry 10.8.0.15,192.168.122.101") {
+		t.Errorf("expected drift for bob ipset entries, got: %v", result.Drift)
+	}
+	want := map[string]bool{
+		"10.8.0.15,192.168.122.100": false,
+		"10.8.0.15,192.168.122.101": false,
+	}
+	for _, d := range result.Deltas {
+		if _, ok := want[d.Entry]; ok && !d.Add {
+			want[d.Entry] = true
+		}
+	}
+	for entry, found := range want {
+		if !found {
+			t.Errorf("missing delete delta for %s from %+v", entry, result.Deltas)
+		}
 	}
 }
 
@@ -245,6 +343,26 @@ func TestComputeExpectedIPSets(t *testing.T) {
 	}
 	if matrixExp["10.8.0.10,192.168.122.100"] != "alice -> sandbox" {
 		t.Errorf("comment = %q, want \"alice -> sandbox\"", matrixExp["10.8.0.10,192.168.122.100"])
+	}
+}
+
+func TestComputeExpectedIPSets_ExcludesInactiveUsers(t *testing.T) {
+	db := makeInactiveBobDB()
+	allExp, matrixExp := computeExpectedIPSets(db)
+
+	if _, ok := allExp["10.8.0.5"]; !ok {
+		t.Error("expected active admin ip in all-access set")
+	}
+	if _, ok := matrixExp["10.8.0.10,192.168.122.100"]; !ok {
+		t.Error("expected active alice entry in matrix set")
+	}
+	for entry := range matrixExp {
+		if strings.HasPrefix(entry, "10.8.0.15,") {
+			t.Errorf("inactive bob entry unexpectedly present: %s", entry)
+		}
+	}
+	if len(matrixExp) != 1 {
+		t.Errorf("matrix set size = %d, want 1", len(matrixExp))
 	}
 }
 
