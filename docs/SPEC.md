@@ -140,7 +140,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 - calls the `check` internally for the state and config validation.
 - outputs: `username [ip] endpoint in out lasthandshake`
   - endpoint without port
-  - in/out bytes in human readable format e.g. `2.07Mb` and in different colors (use dim colors)
+  - in/out bytes in human readable format e.g. `2.07Mb`
   - lasthandshake in format like `2d23h48m40s`
 - colorizes only the `LAST HANDSHAKE` values when stdout is an interactive terminal, unless `--no-color` is passed
   - `never` is grey

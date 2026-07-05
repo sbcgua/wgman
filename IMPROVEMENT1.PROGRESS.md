@@ -70,6 +70,20 @@
   default, TTY output colorizing `never`, and TTY output colorizing day/minute
   handshake components while leaving hour/second components plain.
 
+## Phase 7 Verification
+
+- Reviewed user-facing help text and README command examples.
+- Aligned `docs/SPEC.md` with implemented behavior for comments, inactive
+  users, activate/deactivate, deploy peer reconciliation, and `show`
+  color/no-color behavior.
+- Kept `docs/NOTES.md` focused on durable implementation conventions.
+- `GOCACHE=$USERPROFILE\AppData\Local\Temp\wgman-gocache GOPATH=$USERPROFILE\AppData\Local\Temp\wgman-gopath go test ./...` passed.
+- `GOCACHE=$USERPROFILE\AppData\Local\Temp\wgman-gocache GOPATH=$USERPROFILE\AppData\Local\Temp\wgman-gopath go vet ./...` passed with no output.
+- `gofmt -l .` passed with no output.
+- `GOCACHE=$USERPROFILE\AppData\Local\Temp\wgman-gocache GOPATH=$USERPROFILE\AppData\Local\Temp\wgman-gopath go build -trimpath -ldflags='-s -w' -o $USERPROFILE\AppData\Local\Temp\wgman-improvement1.exe .` passed.
+- `bash -n share/usr/local/sbin/wgman-firewall-hook.template` passed with no
+  output.
+
 ## Behavior Decisions
 
 - User metadata fields are rendered in deterministic DB output after `pub`.
@@ -118,10 +132,11 @@
 - Phase 4: Deploy Reconciliation For Inactive Users.
 - Phase 5: Mod Activate/Deactivate.
 - Phase 6: Show Color Output And `--no-color`.
+- Phase 7: Documentation, Compatibility, And Final Verification.
 
 ## Known Gaps Or Follow-Up Work
 
-- Phase 7 is not implemented in this pass.
+- None for Improvement 1. Future work should start from a new plan.
 
 ## Post-Review Follow-Up Verification
 
