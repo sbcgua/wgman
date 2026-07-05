@@ -215,6 +215,69 @@ func TestRunApp_CreateRejectsDryRun(t *testing.T) {
 	}
 }
 
+func TestRunApp_CreateStoresComment(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	app, _, stderr := makeDeployApp(sys, "")
+	code := runApp([]string{"create", "-c", "laptop replacement", "--config-dir", dir, "carol"}, app)
+	if code != 0 {
+		t.Fatalf("create with comment exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if db.Users["carol"].Comment != "laptop replacement" {
+		t.Errorf("carol comment = %q, want laptop replacement", db.Users["carol"].Comment)
+	}
+}
+
+func TestRunApp_CreateRejectsEmptyComment(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"create", "-c", "  ", "alice"}, app)
+	if code != 2 {
+		t.Fatalf("create empty comment exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "comment must not be empty") {
+		t.Errorf("expected empty comment error, got: %s", stderr.String())
+	}
+}
+
+func TestRunApp_CreateRejectsDuplicateCommentFlag(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"-c", "one", "create", "-c", "two", "alice"}, app)
+	if code != 2 {
+		t.Fatalf("duplicate create comment exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "specified more than once") {
+		t.Errorf("expected duplicate comment error, got: %s", stderr.String())
+	}
+}
+
+func TestRunApp_CommentFlagRejectedForOtherCommands(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"-c", "note", "check"}, app)
+	if code != 2 {
+		t.Fatalf("check -c exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "only supported by create/add") {
+		t.Errorf("expected unsupported comment flag error, got: %s", stderr.String())
+	}
+}
+
 func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -226,7 +289,7 @@ func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	sys.genKeyResult = "CAROL_PRIVATE"
 	sys.pubKeyResult = "CAROL_PUBLIC="
 	app, stdout, stderr := makeDeployApp(sys, "")
-	code := runApp([]string{"add", "--config-dir", dir, "carol"}, app)
+	code := runApp([]string{"add", "--config-dir", dir, "carol", "-c", "temporary contractor"}, app)
 	if code != 0 {
 		t.Fatalf("add alias exit code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -235,5 +298,12 @@ func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	}
 	if len(sys.appliedOps) == 0 {
 		t.Fatalf("expected live operations for add alias")
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if db.Users["carol"].Comment != "temporary contractor" {
+		t.Errorf("carol comment = %q, want temporary contractor", db.Users["carol"].Comment)
 	}
 }

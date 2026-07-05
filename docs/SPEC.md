@@ -143,7 +143,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 
 ## Create user
 
-`wgman create <name> [ip] [res1,res2...]`
+`wgman create [-c "comment text"] <name> [ip] [res1,res2...]`
 
 - calls the `check` internally for the state and config validation.
 - refuse to run if `check` detects any hard errors or ipset drift
@@ -151,6 +151,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 - if the second arg is present it is an IP - use it as client ip. Otherwise, generate ip from the interface ip range (use max available IP among the users + 1, error on failure)
 - generate wireguard private and public keys for the new user (check `wg` man page)
 - check next arg (after the IP if it was there), it may be a comma separated (no space) list of VMs to add access to. If the list is present, check that all VMs are in the config (error otherwise)
+- if `-c "comment text"` is provided, store the trimmed text as the user's optional `comment` metadata in `db.yaml`; reject empty comments
 - generate config file: take the template, replace the variables, save as `<user>.vpn.conf` in the current dir
 - add to user to the `db.yaml`, add his accesses of they were given (otherwize no new access entries)
 - update system state (deploy)
@@ -223,6 +224,7 @@ The following decisions were agreed during planning and should guide implementat
 ### Create command parsing
 
 - `create <name> [ip] [res1,res2...]` parses the second argument as an IP address if it is valid IPv4 or IPv4 CIDR input.
+- `create -c "comment text" <name> [ip] [res1,res2...]` and the `add` alias store the comment in `db.yaml`. Empty or whitespace-only comments are rejected with a usage error.
 - If the second argument is not an IP address, parse it as the comma-separated access list and auto-assign the user IP.
 - Stored user IPs and WireGuard allowed IPs should be normalized to plain IPv4 addresses without `/32`.
 

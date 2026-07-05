@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,7 +19,7 @@ Commands:
   show         Show live WireGuard peers mapped to user names
   init-ipsets  Create the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
-  create       Create a new VPN user: create <name> [ip] [res1,res2...]
+  create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
   add          Alias for create
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
   mod          Modify user VM access: mod <name> <+res1,-res2...> (supports --dry-run)
@@ -34,9 +35,32 @@ Run 'wgman help' or 'wgman -h' for this message.
 
 // globalFlags holds parsed global flags.
 type globalFlags struct {
-	configDir string
-	yes       bool
-	dryRun    bool
+	configDir        string
+	yes              bool
+	dryRun           bool
+	createComment    string
+	createCommentSet bool
+}
+
+type trackedStringFlag struct {
+	value *string
+	set   *bool
+}
+
+func (f trackedStringFlag) String() string {
+	if f.value == nil {
+		return ""
+	}
+	return *f.value
+}
+
+func (f trackedStringFlag) Set(value string) error {
+	if *f.set {
+		return fmt.Errorf("-c specified more than once")
+	}
+	*f.value = value
+	*f.set = true
+	return nil
 }
 
 func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
@@ -87,6 +111,7 @@ func runApp(args []string, app *App) int {
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
 	fs.BoolVar(&gf.dryRun, "dry-run", false, "show planned changes without applying")
+	fs.Var(trackedStringFlag{value: &gf.createComment, set: &gf.createCommentSet}, "c", "create/add user comment")
 
 	// First pass: consume any flags that appear before the command name.
 	// fs.Parse stops at the first non-flag argument (the command).
@@ -116,6 +141,17 @@ func runApp(args []string, app *App) int {
 	}
 
 	cmdArgs := fs.Args() // positional args for the command
+	if gf.createCommentSet && cmd != "create" && cmd != "add" {
+		fmt.Fprintf(app.Stderr, "error: -c is only supported by create/add\n")
+		return 2
+	}
+	if gf.createCommentSet {
+		gf.createComment = strings.TrimSpace(gf.createComment)
+		if gf.createComment == "" {
+			fmt.Fprintln(app.Stderr, "error: create comment must not be empty")
+			return 2
+		}
+	}
 
 	switch cmd {
 	case "check":

@@ -179,6 +179,12 @@ sudo wgman create alice
 sudo wgman add alice
 ```
 
+Create a user with a stored operator comment:
+
+```sh
+sudo wgman create -c "laptop replacement scheduled" alice
+```
+
 Create a user with an explicit IP and resource access:
 
 ```sh

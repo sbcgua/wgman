@@ -92,6 +92,9 @@ is needed.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
 - `create` and `mod` do not prompt after validation.
 - `add` is a CLI alias for `create`.
+- `create`/`add` support `-c <comment>` for storing user metadata. The value
+  is trimmed, empty comments are rejected with exit code 2, and later comment
+  edits are manual `db.yaml` edits.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
 - `list [user]` with no filter prints users and VMs. With a user filter it
