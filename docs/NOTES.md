@@ -41,7 +41,8 @@ is needed.
 - `CheckResult` separates hard errors from ipset drift.
 - `CheckResult.PeerDeltas` holds safe WireGuard peer cleanup operations, such
   as removing live peers for inactive DB users.
-- `deploy` may reconcile ipset drift when there are no hard errors.
+- `deploy` may reconcile ipset drift and inactive-user peer drift when there
+  are no hard errors.
 - `create`, `remove`, `mod`, `list`, and `show` require a fully clean
   `CheckResult`.
 - Configured ipsets are fully owned by `wgman`; unexpected entries in those
@@ -102,6 +103,8 @@ is needed.
   edits are manual `db.yaml` edits.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
+- `deploy` applies ipset deltas before WireGuard peer deltas. Inactive cleanup
+  therefore deletes managed ipset entries before removing the live peer.
 - `list [user]` with no filter prints users and VMs. With a user filter it
   prints that user's access list.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.

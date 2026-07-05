@@ -69,9 +69,33 @@ func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
 	}
 }
 
+// ApplyPeerDeltas applies WireGuard peer operations from deltas through sys.
+// Operations are applied in order; the first error encountered is returned.
+func ApplyPeerDeltas(iface string, deltas []WGPeerDeltaOp, sys SystemAdapter) error {
+	for _, d := range deltas {
+		if d.Remove {
+			if err := sys.WGDelPeer(iface, d.PubKey); err != nil {
+				return fmt.Errorf("remove WireGuard peer for %q: %w", d.User, err)
+			}
+		}
+	}
+	return nil
+}
+
+// printPeerDeltas writes a human-readable summary of planned WireGuard peer
+// operations to w.
+func printPeerDeltas(deltas []WGPeerDeltaOp, w io.Writer) {
+	for _, d := range deltas {
+		if d.Remove {
+			fmt.Fprintf(w, "  remove wg peer %s %s\n", d.User, d.PubKey)
+		}
+	}
+}
+
 // cmdDeploy implements "wgman deploy".
-// It calls internal check, refuses on hard errors, reports planned ipset
-// deltas, optionally prompts for confirmation, and applies the changes.
+// It calls internal check, refuses on hard errors, reports planned ipset and
+// WireGuard peer deltas, optionally prompts for confirmation, and applies the
+// changes.
 func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 	if len(args) > 0 {
 		fmt.Fprintln(app.Stderr, "error: deploy takes no positional arguments")
@@ -104,14 +128,16 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	if len(result.Deltas) == 0 {
+	changeCount := len(result.Deltas) + len(result.PeerDeltas)
+	if changeCount == 0 {
 		fmt.Fprintln(app.Stdout, "deploy: no changes needed")
 		return 0
 	}
 
 	// Report planned changes.
-	fmt.Fprintf(app.Stdout, "deploy: planned changes (%d):\n", len(result.Deltas))
+	fmt.Fprintf(app.Stdout, "deploy: planned changes (%d):\n", changeCount)
 	printDeltas(result.Deltas, app.Stdout)
+	printPeerDeltas(result.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {
 		fmt.Fprintln(app.Stdout, "deploy: dry-run, no changes applied")
@@ -135,7 +161,11 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
+	if err := ApplyPeerDeltas(cfg.Interface, result.PeerDeltas, app.Sys); err != nil {
+		fmt.Fprintln(app.Stderr, "error:", err)
+		return 1
+	}
 
-	fmt.Fprintf(app.Stdout, "deploy: applied %d change(s)\n", len(result.Deltas))
+	fmt.Fprintf(app.Stdout, "deploy: applied %d change(s)\n", changeCount)
 	return 0
 }

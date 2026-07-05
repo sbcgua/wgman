@@ -53,6 +53,37 @@ access:
 `)
 }
 
+func writeDeployInactiveBobTestData(h *testHelper, dir string) {
+	h.writeFile(dir, "config.yaml", `interface: wg0
+sets:
+  all: wg_allow_all
+  matrix: wg_allow_matrix
+`)
+	h.writeFile(dir, "db.yaml", `users:
+  admin:
+    ip: 10.8.0.5
+    pub: ADMIN_PUB=
+  alice:
+    ip: 10.8.0.10
+    pub: ALICE_PUB=
+  bob:
+    ip: 10.8.0.15
+    pub: BOB_PUB=
+    inactive: true
+vms:
+  sandbox: 192.168.122.100
+  mailvm: 192.168.122.101
+access:
+  admin:
+    - "*"
+  alice:
+    - sandbox
+  bob:
+    - sandbox
+    - mailvm
+`)
+}
+
 // buildDriftFakeSystem returns a fakeSystem that matches makeTestDB() for
 // WireGuard but is missing alice's sandbox entry in the matrix ipset, so
 // Check returns drift but no hard errors.
@@ -61,6 +92,22 @@ func buildDriftFakeSystem() *fakeSystem {
 	// Drop alice's matrix entry to create one missing-entry drift.
 	sys.ipsetResults["wg_allow_matrix"] =
 		"create wg_allow_matrix hash:net,net family inet comment\n" +
+			"add wg_allow_matrix 10.8.0.15,192.168.122.100 comment \"bob -> sandbox\"\n" +
+			"add wg_allow_matrix 10.8.0.15,192.168.122.101 comment \"bob -> mailvm\"\n"
+	return sys
+}
+
+func buildInactivePeerFakeSystem() *fakeSystem {
+	sys := buildInactiveBobAbsentFakeSystem()
+	sys.wgDumpResult += "BOB_PUB=\t(none)\t(none)\t10.8.0.15/32\t0\t0\t0\toff\n"
+	return sys
+}
+
+func buildInactivePeerAndIPSetDriftFakeSystem() *fakeSystem {
+	sys := buildInactivePeerFakeSystem()
+	sys.ipsetResults["wg_allow_matrix"] =
+		"create wg_allow_matrix hash:net,net family inet comment\n" +
+			"add wg_allow_matrix 10.8.0.10,192.168.122.100 comment \"alice -> sandbox\"\n" +
 			"add wg_allow_matrix 10.8.0.15,192.168.122.100 comment \"bob -> sandbox\"\n" +
 			"add wg_allow_matrix 10.8.0.15,192.168.122.101 comment \"bob -> mailvm\"\n"
 	return sys
@@ -151,6 +198,29 @@ func TestDeploy_DryRun(t *testing.T) {
 	}
 }
 
+func TestDeploy_DryRunReportsInactivePeerRemoval(t *testing.T) {
+	sys := buildInactivePeerFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	gf := &globalFlags{configDir: dir, dryRun: true}
+	code := cmdDeploy(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("deploy --dry-run inactive peer exit code = %d, want 0", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "remove wg peer bob BOB_PUB=") {
+		t.Errorf("expected inactive peer removal in output, got: %s", out)
+	}
+	if !strings.Contains(out, "dry-run") {
+		t.Errorf("expected dry-run message, got: %s", out)
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no applied ops in dry-run, got: %v", sys.appliedOps)
+	}
+}
+
 func TestDeploy_YesFlag(t *testing.T) {
 	sys := buildDriftFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
@@ -208,6 +278,25 @@ func TestDeploy_ConfirmationRejected(t *testing.T) {
 	}
 }
 
+func TestDeploy_ConfirmationRejectedAppliesNoInactiveCleanup(t *testing.T) {
+	sys := buildInactivePeerAndIPSetDriftFakeSystem()
+	app, stdout, _ := makeDeployApp(sys, "n\n")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	gf := &globalFlags{configDir: dir}
+	code := cmdDeploy(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("deploy inactive cleanup rejected exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "aborted") {
+		t.Errorf("expected aborted output, got: %s", stdout.String())
+	}
+	if len(sys.appliedOps) != 0 {
+		t.Errorf("expected no applied ops after abort, got: %v", sys.appliedOps)
+	}
+}
+
 func TestDeploy_AppliesAddDelta(t *testing.T) {
 	sys := buildDriftFakeSystem()
 	app, _, _ := makeDeployApp(sys, "")
@@ -257,6 +346,87 @@ func TestDeploy_AppliesDeleteDelta(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected delete op for ghost entry, got: %v", sys.appliedOps)
+	}
+}
+
+func TestDeploy_AppliesInactivePeerRemoval(t *testing.T) {
+	sys := buildInactivePeerFakeSystem()
+	app, _, _ := makeDeployApp(sys, "")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	gf := &globalFlags{configDir: dir, yes: true}
+	code := cmdDeploy(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("deploy inactive peer cleanup exit code = %d, want 0", code)
+	}
+	found := false
+	for _, op := range sys.appliedOps {
+		if op == "wgdel:wg0:BOB_PUB=" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected WireGuard peer removal for inactive bob, got: %v", sys.appliedOps)
+	}
+}
+
+func TestDeploy_AppliesInactiveIPSetDeletesBeforePeerRemoval(t *testing.T) {
+	sys := buildInactivePeerAndIPSetDriftFakeSystem()
+	app, _, _ := makeDeployApp(sys, "")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	gf := &globalFlags{configDir: dir, yes: true}
+	code := cmdDeploy(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("deploy inactive cleanup exit code = %d, want 0", code)
+	}
+	wantOps := []string{
+		"del:wg_allow_matrix:10.8.0.15,192.168.122.100",
+		"del:wg_allow_matrix:10.8.0.15,192.168.122.101",
+		"wgdel:wg0:BOB_PUB=",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing op %q from %v", want, sys.appliedOps)
+		}
+	}
+	wgIndex := -1
+	lastDelIndex := -1
+	for i, op := range sys.appliedOps {
+		if strings.HasPrefix(op, "del:wg_allow_matrix:10.8.0.15,") && i > lastDelIndex {
+			lastDelIndex = i
+		}
+		if op == "wgdel:wg0:BOB_PUB=" {
+			wgIndex = i
+		}
+	}
+	if wgIndex == -1 || lastDelIndex == -1 || wgIndex < lastDelIndex {
+		t.Errorf("expected ipset deletes before WireGuard removal, got: %v", sys.appliedOps)
+	}
+}
+
+func TestDeploy_PeerRemovalFailure(t *testing.T) {
+	sys := buildInactivePeerFakeSystem()
+	sys.wgDelErr = fmt.Errorf("wg: operation failed")
+	app, _, stderr := makeDeployApp(sys, "")
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployInactiveBobTestData(h, dir)
+	gf := &globalFlags{configDir: dir, yes: true}
+	code := cmdDeploy(gf, nil, app)
+	if code == 0 {
+		t.Fatal("deploy should return non-zero when peer removal fails")
+	}
+	if !strings.Contains(stderr.String(), "operation failed") {
+		t.Errorf("expected peer removal error, got: %s", stderr.String())
 	}
 }
 

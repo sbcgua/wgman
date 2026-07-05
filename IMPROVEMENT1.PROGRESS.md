@@ -38,6 +38,16 @@
   hard errors, unknown peers remaining hard errors, and inactive users being
   excluded from expected ipsets.
 
+## Phase 4 Verification
+
+- `GOCACHE=/tmp/wgman-gocache go test ./...` passed.
+- `GOCACHE=/tmp/wgman-gocache go vet ./...` passed with no output.
+- `gofmt -l .` passed with no output.
+- Tests cover deploy dry-run reporting inactive peer removal, `--yes`
+  applying inactive peer removal, inactive ipset deletes applying before peer
+  removal, confirmation rejection applying nothing, peer removal failure
+  returning exit code 1, and unrelated hard errors still being refused.
+
 ## Behavior Decisions
 
 - User metadata fields are rendered in deterministic DB output after `pub`.
@@ -54,6 +64,10 @@
   `PeerDeltas` and do not produce hard errors.
 - `CheckResult.OK()` is false when peer cleanup is pending, while
   `CheckResult.Clean()` remains true if there are no hard errors.
+- `deploy` applies ipset deltas before WireGuard peer deltas. This keeps
+  inactive cleanup ordered as ipset entry deletion followed by peer removal.
+- Deploy-driven cleanup does not change `db.yaml`, so peer removal failures are
+  reported directly without DB rollback.
 
 ## Completed Phases
 
@@ -61,9 +75,8 @@
 - Phase 1: DB Schema Extension For User Metadata.
 - Phase 2: Create/Add Comment Flag.
 - Phase 3: Inactive State Planning And Check Semantics.
+- Phase 4: Deploy Reconciliation For Inactive Users.
 
 ## Known Gaps Or Follow-Up Work
 
-- Phase 4 and later are not implemented in this pass.
-- `deploy` does not yet apply `PeerDeltas`; that is the explicit Phase 4
-  follow-up.
+- Phase 5 and later are not implemented in this pass.
