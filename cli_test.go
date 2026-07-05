@@ -45,10 +45,64 @@ func TestRunApp_HelpOutputSmoke(t *testing.T) {
 		t.Fatalf("help exit code = %d, want 0", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "--dry-run"} {
+	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "--dry-run", "--no-color"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"show", "--no-color", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("show --no-color exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("expected no ANSI escapes with --no-color, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ShowColorsInteractiveTTY(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"show", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("show TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), ansiGrey+"never"+ansiReset) {
+		t.Errorf("expected colorized show output on TTY, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ShowNonTTYHasNoColor(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
+	app.IsStdoutTTY = func() bool { return false }
+	code := runApp([]string{"show", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("show non-TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("expected no ANSI escapes for non-TTY, got:\n%s", stdout.String())
 	}
 }
 

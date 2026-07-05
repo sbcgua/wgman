@@ -98,6 +98,9 @@ is needed.
 - Exit code 1 is used for validation, system, or write failures.
 - `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
+- `--no-color` is a global output flag. Color decisions go through `App`'s
+  injectable stdout TTY boundary; tests and non-TTY output default to plain
+  text.
 - `create` and `mod` do not prompt after validation.
 - `add` is a CLI alias for `create`.
 - `create`/`add` support `-c <comment>` for storing user metadata. The value
@@ -117,6 +120,9 @@ is needed.
   prints that user's access list.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.
 - Endpoint formatting strips the port and preserves `(none)`.
+- `show` colorizes only `LAST HANDSHAKE` on interactive stdout: `never` uses
+  grey, day/minute duration components use dim cyan, and hour/second
+  components remain uncolored.
 
 ## Tests
 

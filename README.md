@@ -141,6 +141,8 @@ Show WireGuard peer status with user names:
 
 ```sh
 sudo wgman show
+# Suppress interactive color output:
+sudo wgman show --no-color
 ```
 
 Create the managed ipsets defined in `config.yaml`:

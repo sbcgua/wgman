@@ -85,6 +85,52 @@ func TestRunShow_HandshakeFormatting(t *testing.T) {
 	}
 }
 
+func TestRunShow_NoColorByDefault(t *testing.T) {
+	db := makeTestDB()
+	result := makeCleanCheckResult()
+	now := time.Unix(1748001000, 0)
+	var buf strings.Builder
+	runShow(db, result, now, &buf, io.Discard)
+	out := buf.String()
+
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("expected no ANSI color by default, got:\n%s", out)
+	}
+}
+
+func TestRunShow_ColorizesNever(t *testing.T) {
+	db := makeTestDB()
+	result := makeCleanCheckResult()
+	var buf strings.Builder
+	runShowWithColor(db, result, time.Unix(1748001000, 0), &buf, io.Discard, true)
+	out := buf.String()
+
+	if !strings.Contains(out, ansiGrey+"never"+ansiReset) {
+		t.Errorf("expected grey never, got:\n%s", out)
+	}
+	if strings.Contains(stripANSI(out), "\x1b[") {
+		t.Errorf("stripANSI left escape sequences in:\n%s", stripANSI(out))
+	}
+}
+
+func TestRunShow_ColorizesDayAndMinuteOnly(t *testing.T) {
+	db := makeTestDB()
+	result := makeCleanCheckResult()
+	result.WGDump.Peers[1].LatestHandshake = 1747742480
+	now := time.Unix(1748001000, 0)
+	var buf strings.Builder
+	runShowWithColor(db, result, now, &buf, io.Discard, true)
+	out := buf.String()
+
+	want := ansiDimCyan + "2d" + ansiReset + "23h" + ansiDimCyan + "48m" + ansiReset + "40s"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected colored day/minute and plain hour/second, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "2d23h48m40s") {
+		t.Errorf("plain handshake changed after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
 func TestRunShow_SortedByName(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()
@@ -124,4 +170,19 @@ func TestRunShow_RefusesOnDrift(t *testing.T) {
 	if code == 0 {
 		t.Error("expected non-zero code when drift present")
 	}
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			i += 2
+			for i < len(s) && (s[i] < '@' || s[i] > '~') {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }

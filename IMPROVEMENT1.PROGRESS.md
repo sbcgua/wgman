@@ -61,6 +61,15 @@
   DB-only access edits, comment/access preservation, and redundant toggle
   no-ops.
 
+## Phase 6 Verification
+
+- `GOCACHE=/tmp/wgman-gocache go test ./...` passed.
+- `GOCACHE=/tmp/wgman-gocache go vet ./...` passed with no output.
+- `gofmt -l .` passed with no output.
+- Tests cover `--no-color` acceptance, non-TTY output staying plain by
+  default, TTY output colorizing `never`, and TTY output colorizing day/minute
+  handshake components while leaving hour/second components plain.
+
 ## Behavior Decisions
 
 - User metadata fields are rendered in deterministic DB output after `pub`.
@@ -92,6 +101,13 @@
   live rollback on live failure after partial apply or DB save failure.
 - Access edits for inactive users can be DB-only changes and are saved even
   when no live ipset deltas are produced.
+- `--no-color` is a global flag and only affects presentation; redirected and
+  non-TTY output remain plain by default.
+- `show` colorizes only the `LAST HANDSHAKE` field on interactive stdout:
+  `never` is grey, day/minute duration components are dim cyan, and
+  hour/second components remain plain.
+- TTY detection is injected through `App.IsStdoutTTY` so tests can exercise
+  color behavior without real terminal dependencies.
 
 ## Completed Phases
 
@@ -101,10 +117,11 @@
 - Phase 3: Inactive State Planning And Check Semantics.
 - Phase 4: Deploy Reconciliation For Inactive Users.
 - Phase 5: Mod Activate/Deactivate.
+- Phase 6: Show Color Output And `--no-color`.
 
 ## Known Gaps Or Follow-Up Work
 
-- Phase 6 and later are not implemented in this pass.
+- Phase 7 is not implemented in this pass.
 
 ## Post-Review Follow-Up Verification
 

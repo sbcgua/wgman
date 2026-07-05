@@ -34,12 +34,20 @@ func cmdShow(gf *globalFlags, args []string, app *App) int {
 	}
 
 	result := Check(cfg, db, app.Sys)
-	return runShow(db, result, app.Now(), app.Stdout, app.Stderr)
+	color := false
+	if !gf.noColor && app.IsStdoutTTY != nil {
+		color = app.IsStdoutTTY()
+	}
+	return runShowWithColor(db, result, app.Now(), app.Stdout, app.Stderr, color)
 }
 
 // runShow is the testable core of "show".
 // result must be OK() and result.WGDump non-nil; returns 1 on failure.
 func runShow(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Writer) int {
+	return runShowWithColor(db, result, now, stdout, stderr, false)
+}
+
+func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Writer, color bool) int {
 	if !result.OK() {
 		printCheckErrors(result, stderr)
 		fmt.Fprintln(stderr, "show: FAILED")
@@ -79,7 +87,7 @@ func runShow(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Write
 			endpointHost(peer.Endpoint),
 			formatBytes(peer.RxBytes),
 			formatBytes(peer.TxBytes),
-			formatHandshake(peer.LatestHandshake, now),
+			formatHandshakeColor(peer.LatestHandshake, now, color),
 		)
 	}
 	tw.Flush()

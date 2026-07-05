@@ -29,6 +29,7 @@ Global flags:
   --config-dir <dir>  Config directory (default /etc/wireguard/wgman)
   --yes               Skip interactive confirmation prompts
   --dry-run           Show planned changes without applying them (deploy, remove, mod only)
+  --no-color          Disable colorized terminal output
 
 Run 'wgman help' or 'wgman -h' for this message.
 `
@@ -38,6 +39,7 @@ type globalFlags struct {
 	configDir        string
 	yes              bool
 	dryRun           bool
+	noColor          bool
 	createComment    string
 	createCommentSet bool
 }
@@ -74,22 +76,29 @@ func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
 // App holds all injectable dependencies for command handlers.
 // main() is the only place that constructs an App backed by real OS resources.
 type App struct {
-	Sys    SystemAdapter
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
-	Now    func() time.Time
+	Sys         SystemAdapter
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
+	Now         func() time.Time
+	IsStdoutTTY func() bool
 }
 
 // newRealApp returns an App wired to real OS dependencies.
 func newRealApp() *App {
 	return &App{
-		Sys:    &RealSystem{},
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Now:    time.Now,
+		Sys:         &RealSystem{},
+		Stdin:       os.Stdin,
+		Stdout:      os.Stdout,
+		Stderr:      os.Stderr,
+		Now:         time.Now,
+		IsStdoutTTY: isStdoutTTY,
 	}
+}
+
+func isStdoutTTY() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // run is the entry point called from main; it builds a real App and delegates.
@@ -111,6 +120,7 @@ func runApp(args []string, app *App) int {
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
 	fs.BoolVar(&gf.dryRun, "dry-run", false, "show planned changes without applying")
+	fs.BoolVar(&gf.noColor, "no-color", false, "disable colorized terminal output")
 	fs.Var(trackedStringFlag{value: &gf.createComment, set: &gf.createCommentSet}, "c", "create/add user comment")
 
 	// First pass: consume any flags that appear before the command name.

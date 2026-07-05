@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+const (
+	ansiReset   = "\x1b[0m"
+	ansiGrey    = "\x1b[90m"
+	ansiDimCyan = "\x1b[2;36m"
+)
+
 // formatBytes converts a byte count to a compact human-readable string.
 // Format follows the spec example: "2.07Mb".
 func formatBytes(n int64) string {
@@ -33,16 +39,7 @@ func formatHandshake(ts int64, now time.Time) string {
 	if ts == 0 {
 		return "never"
 	}
-	age := now.Unix() - ts
-	if age < 0 {
-		age = 0
-	}
-	secs := age % 60
-	age /= 60
-	mins := age % 60
-	age /= 60
-	hours := age % 24
-	days := age / 24
+	days, hours, mins, secs := handshakeAgeParts(ts, now)
 
 	switch {
 	case days > 0:
@@ -54,6 +51,42 @@ func formatHandshake(ts int64, now time.Time) string {
 	default:
 		return fmt.Sprintf("%ds", secs)
 	}
+}
+
+func formatHandshakeColor(ts int64, now time.Time, enabled bool) string {
+	if !enabled {
+		return formatHandshake(ts, now)
+	}
+	if ts == 0 {
+		return ansiGrey + "never" + ansiReset
+	}
+	days, hours, mins, secs := handshakeAgeParts(ts, now)
+
+	color := func(s string) string { return ansiDimCyan + s + ansiReset }
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%s%dh%s%ds", color(fmt.Sprintf("%dd", days)), hours, color(fmt.Sprintf("%dm", mins)), secs)
+	case hours > 0:
+		return fmt.Sprintf("%dh%s%ds", hours, color(fmt.Sprintf("%dm", mins)), secs)
+	case mins > 0:
+		return fmt.Sprintf("%s%ds", color(fmt.Sprintf("%dm", mins)), secs)
+	default:
+		return fmt.Sprintf("%ds", secs)
+	}
+}
+
+func handshakeAgeParts(ts int64, now time.Time) (days, hours, mins, secs int64) {
+	age := now.Unix() - ts
+	if age < 0 {
+		age = 0
+	}
+	secs = age % 60
+	age /= 60
+	mins = age % 60
+	age /= 60
+	hours = age % 24
+	days = age / 24
+	return days, hours, mins, secs
 }
 
 // endpointHost strips the port from a "host:port" endpoint string.
