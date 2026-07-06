@@ -81,7 +81,8 @@ is needed.
   users with empty access are omitted from `access`.
 - Generated client configs are written as `<user>.vpn.conf` in the current
   working directory, mode `0600`, and are never overwritten.
-- Generated client configs strip comment-only lines from `user.conf.template`.
+- Generated client configs strip comment-only lines from `user.conf.template`
+  and then remove leading blank lines left by stripped template headers.
 - `create` order: write client config, add WireGuard peer, apply ipset deltas,
   commit `db.yaml`. Failures trigger best-effort rollback.
 - `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
