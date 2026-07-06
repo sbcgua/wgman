@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 )
 
 // cmdList implements "wgman list [filter]".
@@ -56,7 +57,7 @@ func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Write
 
 	fmt.Fprintln(stdout, "Users:")
 	for _, name := range sortedKeys(db.Users) {
-		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.Users[name].IP)
+		fmt.Fprintf(stdout, "  %-20s %-15s %s\n", name, db.Users[name].IP, formatAccessSummary(db.Access[name]))
 	}
 
 	fmt.Fprintln(stdout, "")
@@ -67,6 +68,16 @@ func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Write
 
 	fmt.Fprintln(stdout, "list: OK")
 	return 0
+}
+
+func formatAccessSummary(vms []string) string {
+	if len(vms) == 0 {
+		return "(none)"
+	}
+	sorted := make([]string, len(vms))
+	copy(sorted, vms)
+	sort.Strings(sorted)
+	return "(" + strings.Join(sorted, ",") + ")"
 }
 
 // runListUser prints the access list for a single named user.

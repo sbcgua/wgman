@@ -117,8 +117,8 @@ is needed.
   user is already in the requested state.
 - Inactive toggles apply live changes before committing `db.yaml`; failed live
   changes or failed DB commits trigger best-effort live rollback.
-- `list [user]` with no filter prints users and VMs. With a user filter it
-  prints that user's access list.
+- `list [user]` with no filter prints users with IP/access summaries and VMs.
+  With a user filter it prints that user's access list.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.
 - Endpoint formatting strips the port and preserves `(none)`.
 - `show` appends `~` to inactive usernames in both color and no-color modes.

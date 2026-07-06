@@ -19,6 +19,25 @@ func TestRunList_NoFilter(t *testing.T) {
 			t.Errorf("expected %q in list output, got:\n%s", want, out)
 		}
 	}
+	for _, want := range []string{"admin", "(*)", "alice", "(sandbox)", "bob", "(mailvm,sandbox)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected access summary %q in list output, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunList_NoFilterUserWithNoAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Users["newguy"] = UserEntry{IP: "10.8.0.20", Pub: "NEWGUY_PUB="}
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "newguy") || !strings.Contains(out, "(none)") {
+		t.Errorf("expected no-access summary for newguy, got:\n%s", out)
+	}
 }
 
 func TestRunList_UsersSortedAlphabetically(t *testing.T) {

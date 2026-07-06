@@ -127,7 +127,7 @@ At the end of each command clearly and concisely report the result.
 `wgman list [filter]`
 
 - calls the `check` internally for the state and config validation. If fails - return with errors same a `check`.
-- list users and their ips
+- list users, their ips, and access summary in the form `(vm1,vm2)` or `(none)`
 - list resources and their ips
 - if filter is specified, the program outputs accesses for the user = filter
 
