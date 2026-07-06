@@ -1,6 +1,4 @@
-# Ideas
-
-## Port-Limited VM Access
+# Port-Limited VM Access
 
 Current access control is based on two levels:
 
@@ -9,12 +7,12 @@ Current access control is based on two levels:
 
 This controls who may reach which VM, but not which services on that VM may be reached. If a user is allowed to a VM, the firewall rule can only allow or deny traffic to the VM as a whole unless ports are hardcoded in iptables rules outside the managed access data.
 
-Recommended firewall model:
+The idea is to add another concept to the confguration - resource (or maybe service - discussible) - which would be a combination of vm and port (or ports). A user then may have access to VMs and/or resources.
 
-- Keep the existing all-access set as `hash:ip`.
-- Keep the existing VM matrix set as `hash:net,net` for broad VM access.
-- Add a separate port-aware set for service-limited access, preferably:
-  - `hash:ip,net,port` for TCP/UDP rules where the source VPN IP, destination VM IP/CIDR, and destination port are matched together.
+Tehcnically, add a separate port-aware ipset for service-limited access, preferably:
+
+- `hash:ip,net,port` for TCP/UDP rules where the source VPN IP, destination VM IP/CIDR, and destination port are matched together.
+- the set must be referred in the `env.yaml` as `matrix_ports`
 
 Example shape:
 
@@ -33,7 +31,51 @@ iptables -A WGMAN_FWD -i wg0 -o virbr0 -p udp -m set --match-set wg_allow_matrix
 
 Notes:
 
-- `hash:ip,port,ip` keeps the policy in ipset data instead of baking service lists into the hook script.
+- `hash:ip,port,ip` keeps the policy in ipset data instead of baking service lists into the hook script (`/share/.../wgman-firewall-hook.template`).
 - Separate TCP and UDP iptables rules are still needed because iptables must select the packet protocol before the destination port match can be meaningful.
-- ICMP does not fit a port-based set. If ICMP needs per-VM control, keep it in the broad matrix set or introduce a separate protocol-specific rule/set later.
-- The hook script should stay generic: it should wire firewall rules for the configured sets, while access entries remain managed elsewhere.
+- ICMP does not fit a port-based set. ICMP needs an experiment if such an ipset may be used as ip:ip hash, to allow ICMP to selected VM. Or introduce a separate protocol-specific rule/set later.
+- The hook script should stay generic: it should wire firewall rules for the configured sets, while access entries remain managed in the `db.yaml`.
+
+Suggested config shape (`db.yaml`):
+
+- Add a section `resources`, that would be a combination of a known vm and port list
+- resource name should allow `@` symbol - it would make convenient to name resources as `service@vm` if needed
+- as resources may be referred from access in the same manner as a vm, the name must be unique over both resources and VMs - e.g. there may be no resource `sandbox` and vm `sandbox`
+- port list can be single digit, or array. Port may have prefix for TCP or UDP. Port without prefix is supposed to be TCP (this is supposedly the default behavior of the ipset itself - manpage: _"The hash:ip,port,ip set type uses a hash to store IP address, port number and a second IP address triples. The port number is interpreted together with a protocol (default TCP) and zero protocol number cannot be used."_). Example config model below. Missing port is an error. Port `*` is equivalent to access to the VM - the access must be added to the VM ipset, not port-limited ipset.
+
+```yaml
+users:
+  ...
+vms:
+  sandbox: 192.168.122.190
+resources:
+  ssh@sandbox:
+    vm: sandbox
+    ports: 22
+  web@sandbox:
+    vm: sandbox
+    ports: [80, 443, 8080]
+  web2@sandbox:
+    vm: sandbox
+    ports:
+      - 80
+      - 443
+      - 8080
+  xxx@sandbox:
+    vm: sandbox
+    ports:
+      - tcp:80
+      - udp:53
+access:
+  user1:
+    - sandbox # full VM access -> add to matrix
+  user2:
+    - ssh@sandbox # access to service only
+```
+
+Other considerations:
+
+- the semantics of the wgman commands looks to be compatible without extra changes
+- `wgman-firewall-hook.template` must be updated with the final version if `iptables` call
+- init-ipsets shuold create the new set as well
+- check and deploy logic should be concentrated in the `check` and `deploy` files respectively, the rest of the commands should delegate the validation and application of rules to them (as it is now).
