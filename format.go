@@ -9,6 +9,7 @@ import (
 const (
 	ansiReset   = "\x1b[0m"
 	ansiGrey    = "\x1b[90m"
+	ansiRed     = "\x1b[31m"
 	ansiDimCyan = "\x1b[2;36m"
 )
 

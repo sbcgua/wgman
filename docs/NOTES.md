@@ -119,6 +119,8 @@ is needed.
   changes or failed DB commits trigger best-effort live rollback.
 - `list [user]` with no filter prints users with IP/access summaries and VMs.
   With a user filter it prints that user's access list.
+- `list` colorizes access markers on interactive stdout: `none` uses grey and
+  `*` uses red. `--no-color` suppresses this.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.
 - Endpoint formatting strips the port and preserves `(none)`.
 - `show` appends `~` to inactive usernames in both color and no-color modes.

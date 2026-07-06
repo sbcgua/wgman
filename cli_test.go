@@ -106,6 +106,40 @@ func TestRunApp_ShowNonTTYHasNoColor(t *testing.T) {
 	}
 }
 
+func TestRunApp_ListNoColorSuppressesTTYColor(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"list", "--no-color", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("list --no-color exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("expected no ANSI escapes with list --no-color, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ListColorsInteractiveTTY(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"list", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("list TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), ansiRed+"*"+ansiReset) {
+		t.Errorf("expected colorized list output on TTY, got:\n%s", stdout.String())
+	}
+}
+
 func TestRunApp_ArgumentErrorsExitTwo(t *testing.T) {
 	tests := []struct {
 		name string

@@ -135,6 +135,8 @@ List users, resources, and optional user access:
 ```sh
 sudo wgman list
 sudo wgman list alice
+# Suppress interactive color output:
+sudo wgman list --no-color
 ```
 
 Show WireGuard peer status with user names:

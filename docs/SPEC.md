@@ -130,6 +130,7 @@ At the end of each command clearly and concisely report the result.
 - list users, their ips, and access summary in the form `(vm1,vm2)` or `(none)`
 - list resources and their ips
 - if filter is specified, the program outputs accesses for the user = filter
+- when stdout is interactive, `none` access markers are grey and `*` access markers are red; `--no-color` suppresses this
 
 ## Show
 
