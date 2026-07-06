@@ -139,10 +139,12 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 
 - calls the `check` internally for the state and config validation.
 - outputs: `username [ip] endpoint in out lasthandshake`
+  - inactive users are shown with `~` appended to the username, e.g. `alice~`
   - endpoint without port
   - in/out bytes in human readable format e.g. `2.07Mb`
   - lasthandshake in format like `2d23h48m40s`
 - colorizes `RX`, `TX`, and `LAST HANDSHAKE` values when stdout is an interactive terminal, unless `--no-color` is passed
+  - inactive usernames are grey and still keep the `~` suffix
   - non-zero traffic unit suffixes (`B`, `Kb`, `Mb`, `Gb`) are dim cyan
   - zero-byte traffic (`0B`) is grey
   - `never` is grey

@@ -120,10 +120,11 @@ is needed.
   prints that user's access list.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.
 - Endpoint formatting strips the port and preserves `(none)`.
+- `show` appends `~` to inactive usernames in both color and no-color modes.
 - `show` colorizes selected table values on interactive stdout. Traffic unit
-  suffixes use dim cyan, zero-byte traffic (`0B`) uses grey, `never` uses
-  grey, day/minute duration components use dim cyan, and hour/second
-  components remain uncolored.
+  suffixes use dim cyan, zero-byte traffic (`0B`) uses grey, inactive
+  usernames use grey, `never` uses grey, day/minute duration components use
+  dim cyan, and hour/second components remain uncolored.
 
 ## Tests
 

@@ -134,6 +134,46 @@ func TestRunShow_ColorizesTrafficUnits(t *testing.T) {
 	}
 }
 
+func TestRunShow_InactiveUserNameSuffixNoColor(t *testing.T) {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+	result := makeCleanCheckResult()
+	result.WGDump.Peers = result.WGDump.Peers[:2]
+
+	var buf strings.Builder
+	runShowWithColor(db, result, time.Unix(1748001000, 0), &buf, io.Discard, false)
+	out := buf.String()
+
+	if !strings.Contains(out, "bob~") {
+		t.Errorf("expected inactive user suffix in no-color output, got:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("expected no ANSI escapes in no-color output, got:\n%s", out)
+	}
+}
+
+func TestRunShow_InactiveUserNameGreyWithColor(t *testing.T) {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+	result := makeCleanCheckResult()
+	result.WGDump.Peers = result.WGDump.Peers[:2]
+
+	var buf strings.Builder
+	runShowWithColor(db, result, time.Unix(1748001000, 0), &buf, io.Discard, true)
+	out := buf.String()
+
+	if !strings.Contains(out, ansiGrey+"bob~"+ansiReset) {
+		t.Errorf("expected grey inactive user name, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "bob~") {
+		t.Errorf("expected inactive suffix after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
 func TestRunShow_ColorDoesNotChangeColumnLayout(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()

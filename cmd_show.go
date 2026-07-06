@@ -80,10 +80,11 @@ func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr
 	var rows [][]showCell
 	for _, name := range sortedKeys(db.Users) {
 		u := db.Users[name]
+		nameCell := showUserNameCell(name, u.Inactive, color)
 		peer := nameToPeer[name]
 		if peer == nil {
 			rows = append(rows, []showCell{
-				{plain: name, display: name},
+				nameCell,
 				{plain: u.IP, display: u.IP},
 				{plain: "-", display: "-"},
 				{plain: "-", display: "-"},
@@ -96,7 +97,7 @@ func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr
 		txPlain := formatBytes(peer.TxBytes)
 		handshakePlain := formatHandshake(peer.LatestHandshake, now)
 		rows = append(rows, []showCell{
-			{plain: name, display: name},
+			nameCell,
 			{plain: u.IP, display: u.IP},
 			{plain: endpointHost(peer.Endpoint), display: endpointHost(peer.Endpoint)},
 			{plain: rxPlain, display: formatBytesColor(peer.RxBytes, color)},
@@ -107,6 +108,18 @@ func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr
 	writeShowTable(stdout, headers, rows)
 	fmt.Fprintln(stdout, "show: OK")
 	return 0
+}
+
+func showUserNameCell(name string, inactive, color bool) showCell {
+	if !inactive {
+		return showCell{plain: name, display: name}
+	}
+	plain := name + "~"
+	display := plain
+	if color {
+		display = ansiGrey + plain + ansiReset
+	}
+	return showCell{plain: plain, display: display}
 }
 
 func writeShowTable(w io.Writer, headers []string, rows [][]showCell) {
