@@ -3,7 +3,7 @@
 
 This is a handoff plan for a fresh agent implementing the first post-Phase-11 improvement set.
 
-Primary user-facing behavior remains defined by [docs/SPEC.md](docs/SPEC.md). Update that spec when this improvement changes command behavior or config format. Keep [README.md](README.md) user-facing; do not link development logs from it. Durable implementation conventions belong in [docs/NOTES.md](docs/NOTES.md).
+Primary user-facing behavior remains defined by [docs/SPEC.md](../SPEC.md). Update that spec when this improvement changes command behavior or config format. Keep [README.md](../../README.md) user-facing; do not link development logs from it. Durable implementation conventions belong in [docs/NOTES.md](../NOTES.md).
 
 ## Required Progress Tracking
 
@@ -34,8 +34,8 @@ Goal: verify the current tree and establish a progress file before changing beha
 Steps:
 
 1. Read:
-  - [docs/SPEC.md](docs/SPEC.md)
-  - [docs/NOTES.md](docs/NOTES.md)
+  - [docs/SPEC.md](../SPEC.md)
+  - [docs/NOTES.md](../NOTES.md)
   - this plan
 2. Create `IMPROVEMENT1.PROGRESS.md` with the current start status.
 3. Run baseline checks with writable Go caches if needed:
@@ -69,10 +69,10 @@ Behavior:
 
 Implementation notes:
 
-- Extend `UserEntry` in [model.go](model.go).
+- Extend `UserEntry` in [model.go](../../model.go).
 - Use `omitempty` tags where useful, but verify deterministic custom rendering
   still behaves correctly.
-- Update deterministic YAML node rendering in [config.go](config.go).
+- Update deterministic YAML node rendering in [config.go](../../config.go).
 - Preserve sorted users, VMs, and access owners.
 - Keep the blank line spacing between top-level DB sections.
 
@@ -88,8 +88,8 @@ Tests:
 
 Docs:
 
-- Update [docs/SPEC.md](docs/SPEC.md) DB example and config format text.
-- Update [docs/NOTES.md](docs/NOTES.md) with the durable schema convention.
+- Update [docs/SPEC.md](../SPEC.md) DB example and config format text.
+- Update [docs/NOTES.md](../NOTES.md) with the durable schema convention.
 - Record completion and verification in `IMPROVEMENT1.PROGRESS.md`.
 
 Acceptance:
@@ -127,9 +127,9 @@ Tests:
 
 Docs:
 
-- Update [docs/SPEC.md](docs/SPEC.md) create syntax.
-- Update [README.md](README.md) examples if helpful and still user-facing.
-- Update [docs/NOTES.md](docs/NOTES.md) only if a durable CLI parsing convention is established.
+- Update [docs/SPEC.md](../SPEC.md) create syntax.
+- Update [README.md](../../README.md) examples if helpful and still user-facing.
+- Update [docs/NOTES.md](../NOTES.md) only if a durable CLI parsing convention is established.
 - Update `IMPROVEMENT1.PROGRESS.md`.
 
 Acceptance:
@@ -173,8 +173,8 @@ Tests:
 
 Docs:
 
-- Update [docs/SPEC.md](docs/SPEC.md) state validation and deploy behavior.
-- Update [docs/NOTES.md](docs/NOTES.md) with inactive/check/deploy policy.
+- Update [docs/SPEC.md](../SPEC.md) state validation and deploy behavior.
+- Update [docs/NOTES.md](../NOTES.md) with inactive/check/deploy policy.
 - Update `IMPROVEMENT1.PROGRESS.md`.
 
 Acceptance:
@@ -212,9 +212,9 @@ Tests:
 
 Docs:
 
-- Update [README.md](README.md) only if an example is useful to operators.
-- Update [docs/SPEC.md](docs/SPEC.md).
-- Update [docs/NOTES.md](docs/NOTES.md) with operation ordering or delta model if it becomes a durable convention.
+- Update [README.md](../../README.md) only if an example is useful to operators.
+- Update [docs/SPEC.md](../SPEC.md).
+- Update [docs/NOTES.md](../NOTES.md) with operation ordering or delta model if it becomes a durable convention.
 - Update `IMPROVEMENT1.PROGRESS.md`.
 
 Acceptance:
@@ -270,9 +270,9 @@ Tests:
 
 Docs:
 
-- Update [docs/SPEC.md](docs/SPEC.md) `mod` command behavior.
-- Update [README.md](README.md) with a short activate/deactivate example.
-- Update [docs/NOTES.md](docs/NOTES.md) with the chosen inactive-toggle no-op policy and operation ordering if relevant.
+- Update [docs/SPEC.md](../SPEC.md) `mod` command behavior.
+- Update [README.md](../../README.md) with a short activate/deactivate example.
+- Update [docs/NOTES.md](../NOTES.md) with the chosen inactive-toggle no-op policy and operation ordering if relevant.
 - Update `IMPROVEMENT1.PROGRESS.md`.
 
 Acceptance:
@@ -313,9 +313,9 @@ Tests:
 
 Docs:
 
-- Update [docs/SPEC.md](docs/SPEC.md) show/color behavior.
-- Update [README.md](README.md) if helpful, especially `--no-color`.
-- Update [docs/NOTES.md](docs/NOTES.md) with the terminal/color convention.
+- Update [docs/SPEC.md](../SPEC.md) show/color behavior.
+- Update [README.md](../../README.md) if helpful, especially `--no-color`.
+- Update [docs/NOTES.md](../NOTES.md) with the terminal/color convention.
 - Update `IMPROVEMENT1.PROGRESS.md`.
 
 Acceptance:
@@ -332,8 +332,8 @@ Steps:
 1. Review all user-facing help text.
 2. Ensure command result lines remain concise and consistent.
 3. Ensure `README.md` remains user-facing and does not link development logs.
-4. Ensure [docs/SPEC.md](docs/SPEC.md) reflects the implemented behavior: comments, inactive users, activate/deactivate, and color suppression.
-5. Ensure [docs/NOTES.md](docs/NOTES.md) contains only durable conventions, not phase history.
+4. Ensure [docs/SPEC.md](../SPEC.md) reflects the implemented behavior: comments, inactive users, activate/deactivate, and color suppression.
+5. Ensure [docs/NOTES.md](../NOTES.md) contains only durable conventions, not phase history.
 6. Finalize `IMPROVEMENT1.PROGRESS.md` with verification results and any known residual risk.
 
 Verification:
