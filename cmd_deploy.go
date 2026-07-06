@@ -69,9 +69,69 @@ func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
 	}
 }
 
+// ApplyPeerDeltas applies WireGuard peer operations from deltas through sys.
+// Operations are applied in order; the first error encountered is returned.
+func ApplyPeerDeltas(iface string, deltas []WGPeerDeltaOp, sys SystemAdapter) error {
+	for _, d := range deltas {
+		switch {
+		case d.Add:
+			if err := sys.WGSetPeer(iface, d.PubKey, d.AllowedIP); err != nil {
+				return fmt.Errorf("add WireGuard peer for %q: %w", d.User, err)
+			}
+		case d.Remove:
+			if err := sys.WGDelPeer(iface, d.PubKey); err != nil {
+				return fmt.Errorf("remove WireGuard peer for %q: %w", d.User, err)
+			}
+		}
+	}
+	return nil
+}
+
+// ApplyStateDeltas applies WireGuard and ipset operations in a dependency-aware
+// order: peer additions, ipset changes, then peer removals.
+func ApplyStateDeltas(iface string, ipsetDeltas []IpsetDeltaOp, peerDeltas []WGPeerDeltaOp, sys SystemAdapter) error {
+	if err := ApplyPeerDeltas(iface, filterPeerDeltas(peerDeltas, true), sys); err != nil {
+		return err
+	}
+	if err := ApplyDeltas(ipsetDeltas, sys); err != nil {
+		return err
+	}
+	if err := ApplyPeerDeltas(iface, filterPeerDeltas(peerDeltas, false), sys); err != nil {
+		return err
+	}
+	return nil
+}
+
+func filterPeerDeltas(deltas []WGPeerDeltaOp, add bool) []WGPeerDeltaOp {
+	out := make([]WGPeerDeltaOp, 0, len(deltas))
+	for _, d := range deltas {
+		if add && d.Add {
+			out = append(out, d)
+		}
+		if !add && d.Remove {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// printPeerDeltas writes a human-readable summary of planned WireGuard peer
+// operations to w.
+func printPeerDeltas(deltas []WGPeerDeltaOp, w io.Writer) {
+	for _, d := range deltas {
+		switch {
+		case d.Add:
+			fmt.Fprintf(w, "  add wg peer %s %s %s\n", d.User, d.PubKey, d.AllowedIP)
+		case d.Remove:
+			fmt.Fprintf(w, "  remove wg peer %s %s\n", d.User, d.PubKey)
+		}
+	}
+}
+
 // cmdDeploy implements "wgman deploy".
-// It calls internal check, refuses on hard errors, reports planned ipset
-// deltas, optionally prompts for confirmation, and applies the changes.
+// It calls internal check, refuses on hard errors, reports planned ipset and
+// WireGuard peer deltas, optionally prompts for confirmation, and applies the
+// changes.
 func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 	if len(args) > 0 {
 		fmt.Fprintln(app.Stderr, "error: deploy takes no positional arguments")
@@ -104,14 +164,16 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	if len(result.Deltas) == 0 {
+	changeCount := len(result.Deltas) + len(result.PeerDeltas)
+	if changeCount == 0 {
 		fmt.Fprintln(app.Stdout, "deploy: no changes needed")
 		return 0
 	}
 
 	// Report planned changes.
-	fmt.Fprintf(app.Stdout, "deploy: planned changes (%d):\n", len(result.Deltas))
+	fmt.Fprintf(app.Stdout, "deploy: planned changes (%d):\n", changeCount)
 	printDeltas(result.Deltas, app.Stdout)
+	printPeerDeltas(result.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {
 		fmt.Fprintln(app.Stdout, "deploy: dry-run, no changes applied")
@@ -131,11 +193,11 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		}
 	}
 
-	if err := ApplyDeltas(result.Deltas, app.Sys); err != nil {
+	if err := ApplyStateDeltas(cfg.Interface, result.Deltas, result.PeerDeltas, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	fmt.Fprintf(app.Stdout, "deploy: applied %d change(s)\n", len(result.Deltas))
+	fmt.Fprintf(app.Stdout, "deploy: applied %d change(s)\n", changeCount)
 	return 0
 }

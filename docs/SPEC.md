@@ -23,7 +23,7 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
 
 `db.yaml` - the database of users, VMs and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
 
-- `users` section list users, every one contains `ip` and `pub` (public key) params. The ip is mostly for the human readability of the file. Wgman must user pub keys for its validations.
+- `users` section list users, every one contains `ip` and `pub` (public key) params. The ip is mostly for the human readability of the file. Wgman must user pub keys for its validations. A user may also include optional `comment` metadata and optional `inactive: true`; missing `inactive` means the user is active.
 - `vms` section - list of VM names and the corresponding ip addresses
 - The `access` matrix declares VMs accessible to a user (to be added to `sets.matrix`). If the VM = `*`, the user must be added to the `sets.all` (admin). A user may have access to multiple VMs.
 
@@ -35,9 +35,11 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
     alice:
       ip: 10.8.0.10
       pub: 1j67823bghdhskfj6734gyg4564645
+      comment: laptop replacement scheduled
     bob:
       ip: 10.8.0.15
       pub: 1j67823bghdhskfj6734gyg5345645
+      inactive: true
 
   vms:
     sandbox: 192.168.122.100
@@ -79,6 +81,7 @@ Global flags:
 
 - `--yes` - skip interactive confirmation prompts.
 - `--dry-run` - show planned changes without applying them. Supported by `deploy`, `remove`, and `mod`.
+- `--no-color` - suppress colorized terminal output.
 
 ### Check
 
@@ -91,8 +94,9 @@ Global flags:
   - check all user ips are in wg interface subnet
   - check VMs defined in access section are present in vms sectio
   - other reasonable consistency checks
-- check all wg users (hashes) are in file users (hash) and that ips are the same
-- check all file users (hashes) are in wg
+- check all wg users (hashes) are in file users (hash) and that active users' ips are the same
+- check all active file users (hashes) are in wg; if an active user's WireGuard peer is missing, report restorable drift that `deploy` can reconcile
+- inactive file users are expected to be absent from WireGuard and managed ipsets; if an inactive user's WireGuard peer or managed ipset entries are still present, report removable drift
 - read ip sets defined in `config.sets` - `ipset list <setname> -o save`
 - check = matrix,all
 
@@ -123,9 +127,10 @@ At the end of each command clearly and concisely report the result.
 `wgman list [filter]`
 
 - calls the `check` internally for the state and config validation. If fails - return with errors same a `check`.
-- list users and their ips
+- list users, their ips, and access summary in the form `(vm1,vm2)` or `(none)`
 - list resources and their ips
 - if filter is specified, the program outputs accesses for the user = filter
+- when stdout is interactive, `none` access markers are grey and `*` access markers are red; `--no-color` suppresses this
 
 ## Show
 
@@ -135,13 +140,21 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 
 - calls the `check` internally for the state and config validation.
 - outputs: `username [ip] endpoint in out lasthandshake`
+  - inactive users are shown with `~` appended to the username, e.g. `alice~`
   - endpoint without port
-  - in/out bytes in human readable format e.g. `2.07Mb` and in different colors (use dim colors)
+  - in/out bytes in human readable format e.g. `2.07Mb`
   - lasthandshake in format like `2d23h48m40s`
+- colorizes `RX`, `TX`, and `LAST HANDSHAKE` values when stdout is an interactive terminal, unless `--no-color` is passed
+  - inactive usernames are grey and still keep the `~` suffix
+  - non-zero traffic unit suffixes (`B`, `Kb`, `Mb`, `Gb`) are dim cyan
+  - zero-byte traffic (`0B`) is grey
+  - `never` is grey
+  - day and minute components are dim cyan; hour and second components remain uncolored
+  - redirected output remains plain text with no ANSI escape sequences
 
 ## Create user
 
-`wgman create <name> [ip] [res1,res2...]`
+`wgman create [-c "comment text"] <name> [ip] [res1,res2...]`
 
 - calls the `check` internally for the state and config validation.
 - refuse to run if `check` detects any hard errors or ipset drift
@@ -149,6 +162,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 - if the second arg is present it is an IP - use it as client ip. Otherwise, generate ip from the interface ip range (use max available IP among the users + 1, error on failure)
 - generate wireguard private and public keys for the new user (check `wg` man page)
 - check next arg (after the IP if it was there), it may be a comma separated (no space) list of VMs to add access to. If the list is present, check that all VMs are in the config (error otherwise)
+- if `-c "comment text"` is provided, store the trimmed text as the user's optional `comment` metadata in `db.yaml`; reject empty comments
 - generate config file: take the template, replace the variables, save as `<user>.vpn.conf` in the current dir
 - add to user to the `db.yaml`, add his accesses of they were given (otherwize no new access entries)
 - update system state (deploy)
@@ -156,6 +170,8 @@ This is a convenient representation of `wg show <interface>`, essentially with u
   - add to corresponding ipsets, if relevant - `ipset add <set> <client-ip>` for admin (`*`) access or `ipset add <set> <client-ip>,<vm-ip> comment <comment>`. Where `<comment>` is `<username> -> <vmname>`
 
 Internally, the "deploy" part must be coded as a routine, that applies changes to the system state. It can be reused in `remove`, `mod` and `deploy` command.
+
+`create` command should have command line alias - `add`.
 
 ## Remove user
 
@@ -174,23 +190,25 @@ Reuse the `deploy` routine to update the state.
 
 ## Modify access to resources
 
-`wgman mod <name> <+res1,-res2...>`
+`wgman mod <name> <+res1,-res2...|activate|deactivate>`
 
 - calls the `check` internally for the state and config validation.
 - refuse to run if `check` detects any hard errors or ipset drift
 - check, if the user exists
-- read the agr that follows username - it must be a list of existing VMs, separated by commas (no space), prefixed by `+` or `-`
+- read the arg that follows username. If it is `activate` or `deactivate`, toggle the user's inactive state and apply live WireGuard/ipset changes immediately. Otherwise it must be a list of existing VMs, separated by commas (no space), prefixed by `+` or `-`
 - `+/-` represent intended change in access - add or remove the VM from the access list
 - update system state (deploy) - update the relevant ipsets
+- `deactivate` writes `inactive: true`, preserves the user record/comment/access list, deletes relevant managed ipset entries, and removes the WireGuard peer
+- `activate` omits the `inactive` field from written YAML, preserves the user record/comment/access list, adds the WireGuard peer, and adds relevant managed ipset entries
 
 Reuse the `deploy` routine to update the state.
 
 ## Deploy
 
 - calls the `check` internally for the state and config validation. In case of this command, the difference if supposed to be applied to the system state (the file state supposed to be intended).
-- importantly, user list is not supposed to be changed, just their accesses. Mismatch in users during the validateion is an error.
+- user list is not supposed to be changed. Unknown WireGuard peers and peer IP mismatches are errors, but missing active-user peers are planned for addition and inactive users that still exist live are planned for removal.
 - report the planned updates from the deltas returned by internal `check`, confirm with the user
-- update system state (deploy) - update the relevant ipsets by applying deltas only
+- update system state (deploy) - add missing active users' WireGuard peers where planned, update the relevant ipsets by applying deltas only, then remove inactive users' WireGuard peers where planned
 
 Reuse the `deploy` routine to update the state.
 
@@ -205,10 +223,12 @@ The following decisions were agreed during planning and should guide implementat
   - ipset drift: missing or extra entries in the configured access ipsets compared with `db.yaml`.
 - `check` reports hard errors and ipset drift. Any finding makes the command fail.
 - `create`, `remove`, and `mod` must refuse to run if `check` reports either hard errors or ipset drift. Direct changes to `db.yaml` should be applied through a clean state.
-- `deploy` may run when the only detected problem is ipset drift. It must treat `db.yaml` as the intended access state and reconcile the configured ipsets to it.
+- `deploy` may run when the only detected problems are ipset drift or restorable WireGuard peer drift for known DB users. It must treat `db.yaml` as the intended access state and reconcile WireGuard peers and configured ipsets to it.
 - Internal `check` must prepare concrete ipset deltas so command logic can either report them or apply them.
+- Internal `check` must prepare concrete WireGuard peer add deltas for active users missing live and removal deltas for inactive users that still exist live.
 - The configured `sets.all` and `sets.matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
-- `deploy` applies deltas only: add missing expected entries and delete unexpected entries. It must not flush/rebuild whole ipsets unless a future explicit option is added.
+- Inactive users remain in `db.yaml` but are excluded from expected live WireGuard peers and managed ipsets.
+- `deploy` applies deltas only: add missing active-user WireGuard peers, add missing expected ipset entries, delete unexpected ipset entries, and remove inactive users' live WireGuard peers. It must not flush/rebuild whole ipsets unless a future explicit option is added.
 
 ### Key material and generated configs
 
@@ -219,6 +239,7 @@ The following decisions were agreed during planning and should guide implementat
 ### Create command parsing
 
 - `create <name> [ip] [res1,res2...]` parses the second argument as an IP address if it is valid IPv4 or IPv4 CIDR input.
+- `create -c "comment text" <name> [ip] [res1,res2...]` and the `add` alias store the comment in `db.yaml`. Empty or whitespace-only comments are rejected with a usage error.
 - If the second argument is not an IP address, parse it as the comma-separated access list and auto-assign the user IP.
 - Stored user IPs and WireGuard allowed IPs should be normalized to plain IPv4 addresses without `/32`.
 
@@ -227,7 +248,7 @@ The following decisions were agreed during planning and should guide implementat
 - `remove` and `deploy` prompt by default.
 - `create` and `mod` do not prompt after validation.
 - Global `--yes` skips confirmations for automation.
-- Global `--dry-run` is supported by `deploy`, `remove`, and `mod`; it reports planned changes without applying them.
+- Global `--dry-run` is supported by `deploy`, `remove`, and `mod`; it reports planned changes without applying them. For `deploy`, dry-run includes planned WireGuard peer additions and removals.
 
 ### Configuration format and dependencies
 
@@ -274,7 +295,8 @@ Recommended unit test coverage:
 - Check routine:
   - clean state returns no hard errors and no deltas;
   - config-only problems return hard errors;
-  - WireGuard peer mismatch or missing peer returns hard errors;
+  - WireGuard peer IP mismatch returns hard errors;
+  - missing active peers and present inactive peers return restorable peer deltas;
   - missing/extra ipset entries return drift deltas;
   - hard errors and drift are clearly separated for callers.
 - Delta/deploy planning:
@@ -294,3 +316,10 @@ Recommended unit test coverage:
   - no private key is written to `db.yaml`.
 
 Tests should prefer table-driven cases with small fixture strings for external command output. Integration tests against real `wg`, `ipset`, and root-only behavior are optional and should not be required for the normal test suite.
+
+## Postimplementation Improvement session #1
+
+1. user record in the DB may have optional `comment` field. it can be either edited in yaml by the user, or added during the `create` command with `-c "comment text"` flag
+2. user record may have optional flag `inactive` (boolean). If `true`: the deploy should remove the user from wg and the relevant ipsets. Yet the user record itself stays.
+3. There also should be an command line option to toggle inactive state. `wgman mod <user> activate/deactivate`. It will not conflict with adding vms, as those always start from `+` or `-`. The `activate` should remove the `inactive` flag at all for readability. The command applies the changes immediately.
+4. some eyecandy stuff: let's add colors to `wgman show` to latest handshake field. If the field = `never`, color it in grey. If there is time, then days and minutes should be colored in some relatively dim yet distinguishable color (cyan?). The seconds and hours should stay as is. The color should be suppressable with `--no-color` option

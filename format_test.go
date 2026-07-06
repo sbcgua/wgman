@@ -29,6 +29,30 @@ func TestFormatBytes(t *testing.T) {
 	}
 }
 
+func TestFormatBytesColor(t *testing.T) {
+	tests := []struct {
+		name    string
+		n       int64
+		enabled bool
+		want    string
+	}{
+		{name: "disabled", n: 1024, enabled: false, want: "1.00Kb"},
+		{name: "zero", n: 0, enabled: true, want: ansiGrey + "0B" + ansiReset},
+		{name: "bytes unit", n: 512, enabled: true, want: "512" + ansiDimCyan + "B" + ansiReset},
+		{name: "kilobytes unit", n: 1024, enabled: true, want: "1.00" + ansiDimCyan + "Kb" + ansiReset},
+		{name: "megabytes unit", n: 1024 * 1024, enabled: true, want: "1.00" + ansiDimCyan + "Mb" + ansiReset},
+		{name: "gigabytes unit", n: 1024 * 1024 * 1024, enabled: true, want: "1.00" + ansiDimCyan + "Gb" + ansiReset},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatBytesColor(tc.n, tc.enabled)
+			if got != tc.want {
+				t.Errorf("formatBytesColor(%d, %v) = %q, want %q", tc.n, tc.enabled, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFormatHandshake(t *testing.T) {
 	base := int64(1748000000)
 	now := time.Unix(base, 0)

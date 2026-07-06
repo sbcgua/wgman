@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,25 +19,50 @@ Commands:
   show         Show live WireGuard peers mapped to user names
   init-ipsets  Create the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
-  create       Create a new VPN user: create <name> [ip] [res1,res2...]
+  create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
   add          Alias for create
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
-  mod          Modify user VM access: mod <name> <+res1,-res2...> (supports --dry-run)
+  mod          Modify access or active state: mod <name> <+res1,-res2...|activate|deactivate> (supports --dry-run)
   help         Show this help message
 
 Global flags:
   --config-dir <dir>  Config directory (default /etc/wireguard/wgman)
   --yes               Skip interactive confirmation prompts
   --dry-run           Show planned changes without applying them (deploy, remove, mod only)
+  --no-color          Disable colorized terminal output
 
 Run 'wgman help' or 'wgman -h' for this message.
 `
 
 // globalFlags holds parsed global flags.
 type globalFlags struct {
-	configDir string
-	yes       bool
-	dryRun    bool
+	configDir        string
+	yes              bool
+	dryRun           bool
+	noColor          bool
+	createComment    string
+	createCommentSet bool
+}
+
+type trackedStringFlag struct {
+	value *string
+	set   *bool
+}
+
+func (f trackedStringFlag) String() string {
+	if f.value == nil {
+		return ""
+	}
+	return *f.value
+}
+
+func (f trackedStringFlag) Set(value string) error {
+	if *f.set {
+		return fmt.Errorf("-c specified more than once")
+	}
+	*f.value = value
+	*f.set = true
+	return nil
 }
 
 func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
@@ -50,22 +76,29 @@ func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
 // App holds all injectable dependencies for command handlers.
 // main() is the only place that constructs an App backed by real OS resources.
 type App struct {
-	Sys    SystemAdapter
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
-	Now    func() time.Time
+	Sys         SystemAdapter
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
+	Now         func() time.Time
+	IsStdoutTTY func() bool
 }
 
 // newRealApp returns an App wired to real OS dependencies.
 func newRealApp() *App {
 	return &App{
-		Sys:    &RealSystem{},
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Now:    time.Now,
+		Sys:         &RealSystem{},
+		Stdin:       os.Stdin,
+		Stdout:      os.Stdout,
+		Stderr:      os.Stderr,
+		Now:         time.Now,
+		IsStdoutTTY: isStdoutTTY,
 	}
+}
+
+func isStdoutTTY() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // run is the entry point called from main; it builds a real App and delegates.
@@ -87,6 +120,8 @@ func runApp(args []string, app *App) int {
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
 	fs.BoolVar(&gf.dryRun, "dry-run", false, "show planned changes without applying")
+	fs.BoolVar(&gf.noColor, "no-color", false, "disable colorized terminal output")
+	fs.Var(trackedStringFlag{value: &gf.createComment, set: &gf.createCommentSet}, "c", "create/add user comment")
 
 	// First pass: consume any flags that appear before the command name.
 	// fs.Parse stops at the first non-flag argument (the command).
@@ -116,6 +151,17 @@ func runApp(args []string, app *App) int {
 	}
 
 	cmdArgs := fs.Args() // positional args for the command
+	if gf.createCommentSet && cmd != "create" && cmd != "add" {
+		fmt.Fprintf(app.Stderr, "error: -c is only supported by create/add\n")
+		return 2
+	}
+	if gf.createCommentSet {
+		gf.createComment = strings.TrimSpace(gf.createComment)
+		if gf.createComment == "" {
+			fmt.Fprintln(app.Stderr, "error: create comment must not be empty")
+			return 2
+		}
+	}
 
 	switch cmd {
 	case "check":

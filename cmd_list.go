@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 )
 
 // cmdList implements "wgman list [filter]".
@@ -38,12 +39,20 @@ func cmdList(gf *globalFlags, args []string, app *App) int {
 	if len(args) > 0 {
 		filter = args[0]
 	}
-	return runList(db, result, filter, app.Stdout, app.Stderr)
+	color := false
+	if !gf.noColor && app.IsStdoutTTY != nil {
+		color = app.IsStdoutTTY()
+	}
+	return runListWithColor(db, result, filter, app.Stdout, app.Stderr, color)
 }
 
 // runList is the testable core of "list".
 // result must be OK() for output to be written; returns 1 on failure.
 func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Writer) int {
+	return runListWithColor(db, result, filter, stdout, stderr, false)
+}
+
+func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr io.Writer, color bool) int {
 	if !result.OK() {
 		printCheckErrors(result, stderr)
 		fmt.Fprintln(stderr, "list: FAILED")
@@ -51,12 +60,12 @@ func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Write
 	}
 
 	if filter != "" {
-		return runListUser(db, filter, stdout, stderr)
+		return runListUser(db, filter, stdout, stderr, color)
 	}
 
 	fmt.Fprintln(stdout, "Users:")
 	for _, name := range sortedKeys(db.Users) {
-		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.Users[name].IP)
+		fmt.Fprintf(stdout, "  %-20s %-15s %s\n", name, db.Users[name].IP, formatAccessSummary(db.Access[name], color))
 	}
 
 	fmt.Fprintln(stdout, "")
@@ -65,12 +74,39 @@ func runList(db *DB, result *CheckResult, filter string, stdout, stderr io.Write
 		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
-	fmt.Fprintln(stdout, "list: OK")
+	// fmt.Fprintln(stdout, "list: OK")
 	return 0
 }
 
+func formatAccessSummary(vms []string, color bool) string {
+	if len(vms) == 0 {
+		return "(" + colorAccessItem("none", color) + ")"
+	}
+	sorted := make([]string, len(vms))
+	copy(sorted, vms)
+	sort.Strings(sorted)
+	for i, vm := range sorted {
+		sorted[i] = colorAccessItem(vm, color)
+	}
+	return "(" + strings.Join(sorted, ",") + ")"
+}
+
+func colorAccessItem(item string, color bool) string {
+	if !color {
+		return item
+	}
+	switch item {
+	case "none":
+		return ansiGrey + item + ansiReset
+	case "*":
+		return ansiRed + item + ansiReset
+	default:
+		return item
+	}
+}
+
 // runListUser prints the access list for a single named user.
-func runListUser(db *DB, filter string, stdout, stderr io.Writer) int {
+func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) int {
 	if _, ok := db.Users[filter]; !ok {
 		fmt.Fprintf(stderr, "error: user %q not found\n", filter)
 		fmt.Fprintln(stderr, "list: FAILED")
@@ -80,7 +116,7 @@ func runListUser(db *DB, filter string, stdout, stderr io.Writer) int {
 	vms := db.Access[filter]
 	fmt.Fprintf(stdout, "%s:\n", filter)
 	if len(vms) == 0 {
-		fmt.Fprintln(stdout, "  (none)")
+		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem("none", color))
 		fmt.Fprintln(stdout, "list: OK")
 		return 0
 	}
@@ -89,7 +125,7 @@ func runListUser(db *DB, filter string, stdout, stderr io.Writer) int {
 	copy(sorted, vms)
 	sort.Strings(sorted)
 	for _, vm := range sorted {
-		fmt.Fprintf(stdout, "  %s\n", vm)
+		fmt.Fprintf(stdout, "  %s\n", colorAccessItem(vm, color))
 	}
 	fmt.Fprintln(stdout, "list: OK")
 	return 0

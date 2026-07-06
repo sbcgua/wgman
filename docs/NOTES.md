@@ -16,6 +16,9 @@ is needed.
   with simple ASCII folding (`caseFold`).
 - User and VM IPs must be IPv4. IPv6 and non-IP values are hard errors.
 - User IPs in `db.yaml` are stored as plain IPv4 values, without `/32`.
+- User records support optional `comment` metadata and optional
+  `inactive: true`. Missing `inactive` means active. Deterministic writes omit
+  empty comments and omit `inactive` when false.
 - Duplicate user IPs, duplicate public keys, duplicate access entries, and
   access references to unknown users or VMs are rejected.
 - Access entry `"*"` means all-access/admin and must be the only entry for
@@ -36,11 +39,18 @@ is needed.
 ## Check And Drift Policy
 
 - `CheckResult` separates hard errors from ipset drift.
-- `deploy` may reconcile ipset drift when there are no hard errors.
+- `CheckResult.PeerDeltas` holds safe WireGuard peer operations for known DB
+  users, such as adding missing active peers and removing live peers for
+  inactive users.
+- `deploy` may reconcile ipset drift and known-user peer drift when there are
+  no hard errors.
 - `create`, `remove`, `mod`, `list`, and `show` require a fully clean
   `CheckResult`.
 - Configured ipsets are fully owned by `wgman`; unexpected entries in those
   sets are safe for `deploy` to delete.
+- Inactive users are excluded from expected WireGuard peers and managed
+  ipsets. Inactive users present in live WireGuard are removable drift, while
+  active users missing from WireGuard are addable drift.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
 - `CheckResult.HardErrors`, `Drift`, and `Deltas` are sorted before return for
@@ -71,14 +81,16 @@ is needed.
   users with empty access are omitted from `access`.
 - Generated client configs are written as `<user>.vpn.conf` in the current
   working directory, mode `0600`, and are never overwritten.
-- Generated client configs strip comment-only lines from `user.conf.template`.
+- Generated client configs strip comment-only lines from `user.conf.template`
+  and then remove leading blank lines left by stripped template headers.
 - `create` order: write client config, add WireGuard peer, apply ipset deltas,
   commit `db.yaml`. Failures trigger best-effort rollback.
 - `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
   `db.yaml`. Failures trigger best-effort rollback.
 - `remove` does not delete existing generated client config files.
-- `mod` writes `db.yaml` before applying ipset deltas; it refuses to run unless
-  the pre-command state is clean.
+- Access-only `mod` writes `db.yaml` before applying ipset deltas; it refuses
+  to run unless the pre-command state is clean. Inactive-user access edits can
+  be DB-only changes because inactive users have no expected live ipset state.
 
 ## Command Behavior
 
@@ -87,14 +99,35 @@ is needed.
 - Exit code 1 is used for validation, system, or write failures.
 - `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
+- `--no-color` is a global output flag. Color decisions go through `App`'s
+  injectable stdout TTY boundary; tests and non-TTY output default to plain
+  text.
 - `create` and `mod` do not prompt after validation.
 - `add` is a CLI alias for `create`.
+- `create`/`add` support `-c <comment>` for storing user metadata. The value
+  is trimmed, empty comments are rejected with exit code 2, and later comment
+  edits are manual `db.yaml` edits.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
-- `list [user]` with no filter prints users and VMs. With a user filter it
-  prints that user's access list.
+- `deploy` applies WireGuard peer additions, then ipset deltas, then
+  WireGuard peer removals. Activation repair therefore restores the peer before
+  access entries, and inactive cleanup deletes managed ipset entries before
+  removing the live peer.
+- `mod <user> activate` and `mod <user> deactivate` succeed as no-ops when the
+  user is already in the requested state.
+- Inactive toggles apply live changes before committing `db.yaml`; failed live
+  changes or failed DB commits trigger best-effort live rollback.
+- `list [user]` with no filter prints users with IP/access summaries and VMs.
+  With a user filter it prints that user's access list.
+- `list` colorizes access markers on interactive stdout: `none` uses grey and
+  `*` uses red. `--no-color` suppresses this.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.
 - Endpoint formatting strips the port and preserves `(none)`.
+- `show` appends `~` to inactive usernames in both color and no-color modes.
+- `show` colorizes selected table values on interactive stdout. Traffic unit
+  suffixes use dim cyan, zero-byte traffic (`0B`) uses grey, inactive
+  usernames use grey, `never` uses grey, day/minute duration components use
+  dim cyan, and hour/second components remain uncolored.
 
 ## Tests
 

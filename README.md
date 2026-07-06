@@ -135,12 +135,16 @@ List users, resources, and optional user access:
 ```sh
 sudo wgman list
 sudo wgman list alice
+# Suppress interactive color output:
+sudo wgman list --no-color
 ```
 
 Show WireGuard peer status with user names:
 
 ```sh
 sudo wgman show
+# Suppress interactive color output:
+sudo wgman show --no-color
 ```
 
 Create the managed ipsets defined in `config.yaml`:
@@ -155,7 +159,7 @@ Preview access reconciliation:
 sudo wgman deploy --dry-run
 ```
 
-Apply access reconciliation from `db.yaml` to managed ipsets:
+Apply reconciliation from `db.yaml` to WireGuard peers and managed ipsets:
 
 ```sh
 sudo wgman deploy
@@ -179,6 +183,12 @@ sudo wgman create alice
 sudo wgman add alice
 ```
 
+Create a user with a stored operator comment:
+
+```sh
+sudo wgman create -c "laptop replacement scheduled" alice
+```
+
 Create a user with an explicit IP and resource access:
 
 ```sh
@@ -189,6 +199,13 @@ Modify resource access:
 
 ```sh
 sudo wgman mod alice +mailvm,-sandbox
+```
+
+Deactivate or reactivate a user without deleting their DB record:
+
+```sh
+sudo wgman mod alice deactivate
+sudo wgman mod alice activate
 ```
 
 Remove a user:

@@ -45,10 +45,98 @@ func TestRunApp_HelpOutputSmoke(t *testing.T) {
 		t.Fatalf("help exit code = %d, want 0", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "--dry-run"} {
+	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "--dry-run", "--no-color"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"show", "--no-color", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("show --no-color exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("expected no ANSI escapes with --no-color, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ShowColorsInteractiveTTY(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"show", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("show TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), ansiGrey+"never"+ansiReset) {
+		t.Errorf("expected colorized show output on TTY, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ShowNonTTYHasNoColor(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
+	app.IsStdoutTTY = func() bool { return false }
+	code := runApp([]string{"show", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("show non-TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("expected no ANSI escapes for non-TTY, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ListNoColorSuppressesTTYColor(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"list", "--no-color", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("list --no-color exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("expected no ANSI escapes with list --no-color, got:\n%s", stdout.String())
+	}
+}
+
+func TestRunApp_ListColorsInteractiveTTY(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeDeployTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	app.IsStdoutTTY = func() bool { return true }
+	code := runApp([]string{"list", "--config-dir", dir}, app)
+	if code != 0 {
+		t.Fatalf("list TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), ansiRed+"*"+ansiReset) {
+		t.Errorf("expected colorized list output on TTY, got:\n%s", stdout.String())
 	}
 }
 
@@ -215,6 +303,69 @@ func TestRunApp_CreateRejectsDryRun(t *testing.T) {
 	}
 }
 
+func TestRunApp_CreateStoresComment(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	outDir := h.makeTempDir()
+	t.Chdir(outDir)
+	writeCreateTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	sys.genKeyResult = "CAROL_PRIVATE"
+	sys.pubKeyResult = "CAROL_PUBLIC="
+	app, _, stderr := makeDeployApp(sys, "")
+	code := runApp([]string{"create", "-c", "laptop replacement", "--config-dir", dir, "carol"}, app)
+	if code != 0 {
+		t.Fatalf("create with comment exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if db.Users["carol"].Comment != "laptop replacement" {
+		t.Errorf("carol comment = %q, want laptop replacement", db.Users["carol"].Comment)
+	}
+}
+
+func TestRunApp_CreateRejectsEmptyComment(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"create", "-c", "  ", "alice"}, app)
+	if code != 2 {
+		t.Fatalf("create empty comment exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "comment must not be empty") {
+		t.Errorf("expected empty comment error, got: %s", stderr.String())
+	}
+}
+
+func TestRunApp_CreateRejectsDuplicateCommentFlag(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"-c", "one", "create", "-c", "two", "alice"}, app)
+	if code != 2 {
+		t.Fatalf("duplicate create comment exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "specified more than once") {
+		t.Errorf("expected duplicate comment error, got: %s", stderr.String())
+	}
+}
+
+func TestRunApp_CommentFlagRejectedForOtherCommands(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"-c", "note", "check"}, app)
+	if code != 2 {
+		t.Fatalf("check -c exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "only supported by create/add") {
+		t.Errorf("expected unsupported comment flag error, got: %s", stderr.String())
+	}
+}
+
 func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -226,7 +377,7 @@ func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	sys.genKeyResult = "CAROL_PRIVATE"
 	sys.pubKeyResult = "CAROL_PUBLIC="
 	app, stdout, stderr := makeDeployApp(sys, "")
-	code := runApp([]string{"add", "--config-dir", dir, "carol"}, app)
+	code := runApp([]string{"add", "--config-dir", dir, "carol", "-c", "temporary contractor"}, app)
 	if code != 0 {
 		t.Fatalf("add alias exit code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -235,5 +386,12 @@ func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	}
 	if len(sys.appliedOps) == 0 {
 		t.Fatalf("expected live operations for add alias")
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if db.Users["carol"].Comment != "temporary contractor" {
+		t.Errorf("carol comment = %q, want temporary contractor", db.Users["carol"].Comment)
 	}
 }

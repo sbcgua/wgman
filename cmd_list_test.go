@@ -19,6 +19,67 @@ func TestRunList_NoFilter(t *testing.T) {
 			t.Errorf("expected %q in list output, got:\n%s", want, out)
 		}
 	}
+	for _, want := range []string{"admin", "(*)", "alice", "(sandbox)", "bob", "(mailvm,sandbox)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected access summary %q in list output, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunList_NoFilterUserWithNoAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Users["newguy"] = UserEntry{IP: "10.8.0.20", Pub: "NEWGUY_PUB="}
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "newguy") || !strings.Contains(out, "(none)") {
+		t.Errorf("expected no-access summary for newguy, got:\n%s", out)
+	}
+}
+
+func TestRunList_ColorizesAccessSummaryMarkers(t *testing.T) {
+	db := makeTestDB()
+	db.Users["newguy"] = UserEntry{IP: "10.8.0.20", Pub: "NEWGUY_PUB="}
+	var buf strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "("+ansiRed+"*"+ansiReset+")") {
+		t.Errorf("expected red admin star in access summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "("+ansiGrey+"none"+ansiReset+")") {
+		t.Errorf("expected grey none in access summary, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "(*)") || !strings.Contains(stripANSI(out), "(none)") {
+		t.Errorf("plain access summaries changed after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
+func TestRunList_FilterColorizesAccessMarkers(t *testing.T) {
+	db := makeTestDB()
+	var admin strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "admin", &admin, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("admin list code = %d, want 0", code)
+	}
+	if !strings.Contains(admin.String(), ansiRed+"*"+ansiReset) {
+		t.Errorf("expected red admin star, got:\n%s", admin.String())
+	}
+
+	db.Users["newguy"] = UserEntry{IP: "10.8.0.20", Pub: "NEWGUY_PUB="}
+	var none strings.Builder
+	code = runListWithColor(db, &CheckResult{}, "newguy", &none, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("newguy list code = %d, want 0", code)
+	}
+	if !strings.Contains(none.String(), ansiGrey+"none"+ansiReset) {
+		t.Errorf("expected grey none, got:\n%s", none.String())
+	}
 }
 
 func TestRunList_UsersSortedAlphabetically(t *testing.T) {

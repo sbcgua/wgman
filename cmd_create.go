@@ -14,12 +14,28 @@ import (
 var writeClientConfig = writeClientConfigNoOverwrite
 
 type createArgs struct {
-	Name   string
-	IP     string
-	Access []string
+	Name    string
+	IP      string
+	Access  []string
+	Comment string
 }
 
 func parseCreateArgs(args []string) (*createArgs, error) {
+	return parseCreateArgsWithComment(args, "", false)
+}
+
+func parseCreateArgsWithComment(args []string, comment string, commentSet bool) (*createArgs, error) {
+	var err error
+	args, comment, commentSet, err = extractCreateCommentFlags(args, comment, commentSet)
+	if err != nil {
+		return nil, err
+	}
+	if commentSet {
+		comment = strings.TrimSpace(comment)
+		if comment == "" {
+			return nil, fmt.Errorf("create comment must not be empty")
+		}
+	}
 	if len(args) < 1 || len(args) > 3 {
 		return nil, fmt.Errorf("create requires <name> [ip] [res1,res2...]")
 	}
@@ -27,7 +43,7 @@ func parseCreateArgs(args []string) (*createArgs, error) {
 		return nil, fmt.Errorf("invalid user name %q", args[0])
 	}
 
-	parsed := &createArgs{Name: args[0]}
+	parsed := &createArgs{Name: args[0], Comment: comment}
 	if len(args) == 1 {
 		return parsed, nil
 	}
@@ -53,6 +69,36 @@ func parseCreateArgs(args []string) (*createArgs, error) {
 	}
 	parsed.Access = access
 	return parsed, nil
+}
+
+func extractCreateCommentFlags(args []string, initial string, initialSet bool) ([]string, string, bool, error) {
+	out := make([]string, 0, len(args))
+	comment := initial
+	commentSet := initialSet
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-c":
+			if commentSet {
+				return nil, "", false, fmt.Errorf("create comment specified more than once")
+			}
+			if i+1 >= len(args) {
+				return nil, "", false, fmt.Errorf("-c requires a comment")
+			}
+			comment = args[i+1]
+			commentSet = true
+			i++
+		case strings.HasPrefix(arg, "-c="):
+			if commentSet {
+				return nil, "", false, fmt.Errorf("create comment specified more than once")
+			}
+			comment = strings.TrimPrefix(arg, "-c=")
+			commentSet = true
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out, comment, commentSet, nil
 }
 
 func parseCreateIPArg(s string) (string, bool) {
@@ -103,7 +149,7 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	parsed, err := parseCreateArgs(args)
+	parsed, err := parseCreateArgsWithComment(args, gf.createComment, gf.createCommentSet)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 2
@@ -275,7 +321,7 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, pubKey, subnet string
 	}
 
 	updated := cloneDB(db)
-	updated.Users[args.Name] = UserEntry{IP: clientIP, Pub: pubKey}
+	updated.Users[args.Name] = UserEntry{IP: clientIP, Pub: pubKey, Comment: args.Comment}
 	if len(args.Access) > 0 {
 		updated.Access[args.Name] = append([]string(nil), args.Access...)
 	}
@@ -342,7 +388,7 @@ func renderClientConfig(templatePath, privateKey, clientIP, serverPublicKey stri
 	if err != nil {
 		return "", fmt.Errorf("read user.conf.template: %w", err)
 	}
-	out := stripCommentLines(string(data))
+	out := trimLeadingBlankLines(stripCommentLines(string(data)))
 	replacements := map[string]string{
 		"$CLIENT_PRIVATE_KEY": privateKey,
 		"$CLIENT_VPN_IP":      clientIP,
@@ -365,6 +411,14 @@ func stripCommentLines(s string) string {
 		out.WriteString(line)
 	}
 	return out.String()
+}
+
+func trimLeadingBlankLines(s string) string {
+	lines := strings.SplitAfter(s, "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	return strings.Join(lines, "")
 }
 
 func writeClientConfigNoOverwrite(path, content string) error {

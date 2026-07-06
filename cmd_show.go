@@ -3,9 +3,14 @@ package main
 import (
 	"fmt"
 	"io"
-	"text/tabwriter"
+	"strings"
 	"time"
 )
+
+type showCell struct {
+	plain   string
+	display string
+}
 
 // cmdShow implements "wgman show".
 func cmdShow(gf *globalFlags, args []string, app *App) int {
@@ -34,12 +39,20 @@ func cmdShow(gf *globalFlags, args []string, app *App) int {
 	}
 
 	result := Check(cfg, db, app.Sys)
-	return runShow(db, result, app.Now(), app.Stdout, app.Stderr)
+	color := false
+	if !gf.noColor && app.IsStdoutTTY != nil {
+		color = app.IsStdoutTTY()
+	}
+	return runShowWithColor(db, result, app.Now(), app.Stdout, app.Stderr, color)
 }
 
 // runShow is the testable core of "show".
 // result must be OK() and result.WGDump non-nil; returns 1 on failure.
 func runShow(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Writer) int {
+	return runShowWithColor(db, result, now, stdout, stderr, false)
+}
+
+func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Writer, color bool) int {
 	if !result.OK() {
 		printCheckErrors(result, stderr)
 		fmt.Fprintln(stderr, "show: FAILED")
@@ -63,26 +76,82 @@ func runShow(db *DB, result *CheckResult, now time.Time, stdout, stderr io.Write
 		}
 	}
 
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tIP\tENDPOINT\tRX\tTX\tLAST HANDSHAKE")
-
+	headers := []string{"NAME", "IP", "ENDPOINT", "RX", "TX", "LAST HANDSHAKE"}
+	var rows [][]showCell
 	for _, name := range sortedKeys(db.Users) {
 		u := db.Users[name]
+		nameCell := showUserNameCell(name, u.Inactive, color)
 		peer := nameToPeer[name]
 		if peer == nil {
-			fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\t-\n", name, u.IP)
+			rows = append(rows, []showCell{
+				nameCell,
+				{plain: u.IP, display: u.IP},
+				{plain: "-", display: "-"},
+				{plain: "-", display: "-"},
+				{plain: "-", display: "-"},
+				{plain: "-", display: "-"},
+			})
 			continue
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			name,
-			u.IP,
-			endpointHost(peer.Endpoint),
-			formatBytes(peer.RxBytes),
-			formatBytes(peer.TxBytes),
-			formatHandshake(peer.LatestHandshake, now),
-		)
+		rxPlain := formatBytes(peer.RxBytes)
+		txPlain := formatBytes(peer.TxBytes)
+		handshakePlain := formatHandshake(peer.LatestHandshake, now)
+		rows = append(rows, []showCell{
+			nameCell,
+			{plain: u.IP, display: u.IP},
+			{plain: endpointHost(peer.Endpoint), display: endpointHost(peer.Endpoint)},
+			{plain: rxPlain, display: formatBytesColor(peer.RxBytes, color)},
+			{plain: txPlain, display: formatBytesColor(peer.TxBytes, color)},
+			{plain: handshakePlain, display: formatHandshakeColor(peer.LatestHandshake, now, color)},
+		})
 	}
-	tw.Flush()
-	fmt.Fprintln(stdout, "show: OK")
+	writeShowTable(stdout, headers, rows)
+	// fmt.Fprintln(stdout, "show: OK")
 	return 0
+}
+
+func showUserNameCell(name string, inactive, color bool) showCell {
+	if !inactive {
+		return showCell{plain: name, display: name}
+	}
+	plain := name + "~"
+	display := plain
+	if color {
+		display = ansiGrey + plain + ansiReset
+	}
+	return showCell{plain: plain, display: display}
+}
+
+func writeShowTable(w io.Writer, headers []string, rows [][]showCell) {
+	widths := make([]int, len(headers))
+	for i, header := range headers {
+		widths[i] = len(header)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if len(cell.plain) > widths[i] {
+				widths[i] = len(cell.plain)
+			}
+		}
+	}
+
+	headerCells := make([]showCell, len(headers))
+	for i, header := range headers {
+		headerCells[i] = showCell{plain: header, display: header}
+	}
+	writeShowTableRow(w, headerCells, widths)
+	for _, row := range rows {
+		writeShowTableRow(w, row, widths)
+	}
+}
+
+func writeShowTableRow(w io.Writer, row []showCell, widths []int) {
+	for i, cell := range row {
+		if i == len(row)-1 {
+			fmt.Fprintln(w, cell.display)
+			return
+		}
+		fmt.Fprint(w, cell.display)
+		fmt.Fprint(w, strings.Repeat(" ", widths[i]-len(cell.plain)+2))
+	}
 }
