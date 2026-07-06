@@ -134,6 +134,21 @@ func TestRunShow_ColorizesTrafficUnits(t *testing.T) {
 	}
 }
 
+func TestRunShow_ColorDoesNotChangeColumnLayout(t *testing.T) {
+	db := makeTestDB()
+	result := makeCleanCheckResult()
+	now := time.Unix(1748001000, 0)
+	var plain strings.Builder
+	var colored strings.Builder
+
+	runShowWithColor(db, result, now, &plain, io.Discard, false)
+	runShowWithColor(db, result, now, &colored, io.Discard, true)
+
+	if got, want := stripANSI(colored.String()), plain.String(); got != want {
+		t.Errorf("colored output changed visible layout after stripping ANSI\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestRunShow_ColorizesDayAndMinuteOnly(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()
