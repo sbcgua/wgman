@@ -106,7 +106,7 @@ func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr
 		})
 	}
 	writeShowTable(stdout, headers, rows)
-	fmt.Fprintln(stdout, "show: OK")
+	// fmt.Fprintln(stdout, "show: OK")
 	return 0
 }
 

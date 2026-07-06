@@ -74,7 +74,7 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
-	fmt.Fprintln(stdout, "list: OK")
+	// fmt.Fprintln(stdout, "list: OK")
 	return 0
 }
 
