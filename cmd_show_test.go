@@ -113,6 +113,27 @@ func TestRunShow_ColorizesNever(t *testing.T) {
 	}
 }
 
+func TestRunShow_ColorizesTrafficUnits(t *testing.T) {
+	db := makeTestDB()
+	result := makeCleanCheckResult()
+	var buf strings.Builder
+	runShowWithColor(db, result, time.Unix(1748001000, 0), &buf, io.Discard, true)
+	out := buf.String()
+
+	if !strings.Contains(out, "100.00"+ansiDimCyan+"Kb"+ansiReset) {
+		t.Errorf("expected colorized RX unit, got:\n%s", out)
+	}
+	if !strings.Contains(out, "200.00"+ansiDimCyan+"Kb"+ansiReset) {
+		t.Errorf("expected colorized TX unit, got:\n%s", out)
+	}
+	if !strings.Contains(out, ansiGrey+"0B"+ansiReset) {
+		t.Errorf("expected grey zero-byte traffic, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "100.00Kb") || !strings.Contains(stripANSI(out), "0B") {
+		t.Errorf("plain traffic changed after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
 func TestRunShow_ColorizesDayAndMinuteOnly(t *testing.T) {
 	db := makeTestDB()
 	result := makeCleanCheckResult()

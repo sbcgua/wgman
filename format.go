@@ -32,6 +32,24 @@ func formatBytes(n int64) string {
 	}
 }
 
+func formatBytesColor(n int64, enabled bool) string {
+	plain := formatBytes(n)
+	if !enabled {
+		return plain
+	}
+	if n == 0 {
+		return ansiGrey + plain + ansiReset
+	}
+	unitStart := 0
+	for unitStart < len(plain) && ((plain[unitStart] >= '0' && plain[unitStart] <= '9') || plain[unitStart] == '.') {
+		unitStart++
+	}
+	if unitStart == len(plain) {
+		return plain
+	}
+	return plain[:unitStart] + ansiDimCyan + plain[unitStart:] + ansiReset
+}
+
 // formatHandshake formats a Unix timestamp as an age relative to now.
 // Returns "never" for zero. Otherwise formats as e.g. "2d23h48m40s",
 // omitting leading zero components (but always including seconds).

@@ -85,8 +85,8 @@ func runShowWithColor(db *DB, result *CheckResult, now time.Time, stdout, stderr
 			name,
 			u.IP,
 			endpointHost(peer.Endpoint),
-			formatBytes(peer.RxBytes),
-			formatBytes(peer.TxBytes),
+			formatBytesColor(peer.RxBytes, color),
+			formatBytesColor(peer.TxBytes, color),
 			formatHandshakeColor(peer.LatestHandshake, now, color),
 		)
 	}
