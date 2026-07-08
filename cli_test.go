@@ -66,6 +66,40 @@ func TestAppIsStdoutTTYDelegatesConfiguredStdout(t *testing.T) {
 	}
 }
 
+func TestParseCommandArgsAcceptsFlagsBeforeAndAfterCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "before command",
+			args: []string{"--config-dir", "/tmp/wgman", "list", "alice"},
+		},
+		{
+			name: "after command",
+			args: []string{"list", "--config-dir", "/tmp/wgman", "alice"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := parseCommandArgs(tt.args, io.Discard)
+			if err != nil {
+				t.Fatalf("parseCommandArgs() error = %v", err)
+			}
+			if parsed.name != "list" {
+				t.Errorf("command name = %q, want list", parsed.name)
+			}
+			if len(parsed.args) != 1 || parsed.args[0] != "alice" {
+				t.Errorf("command args = %#v, want [alice]", parsed.args)
+			}
+			if parsed.gf.configDir != "/tmp/wgman" {
+				t.Errorf("config dir = %q, want /tmp/wgman", parsed.gf.configDir)
+			}
+		})
+	}
+}
+
 func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
