@@ -97,9 +97,9 @@ func colorAccessItem(item string, color bool) string {
 	}
 	switch item {
 	case "none":
-		return ansiGrey + item + ansiReset
+		return colorGrey(item)
 	case "*":
-		return ansiRed + item + ansiReset
+		return colorRed(item)
 	default:
 		return item
 	}

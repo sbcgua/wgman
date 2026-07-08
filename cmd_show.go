@@ -117,7 +117,7 @@ func showUserNameCell(name string, inactive, color bool) showCell {
 	plain := name + "~"
 	display := plain
 	if color {
-		display = ansiGrey + plain + ansiReset
+		display = colorGrey(plain)
 	}
 	return showCell{plain: plain, display: display}
 }

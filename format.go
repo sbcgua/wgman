@@ -13,6 +13,18 @@ const (
 	ansiDimCyan = "\x1b[2;36m"
 )
 
+func colorGrey(s string) string {
+	return ansiGrey + s + ansiReset
+}
+
+func colorRed(s string) string {
+	return ansiRed + s + ansiReset
+}
+
+func colorDimCyan(s string) string {
+	return ansiDimCyan + s + ansiReset
+}
+
 // formatBytes converts a byte count to a compact human-readable string.
 // Format follows the spec example: "2.07Mb".
 func formatBytes(n int64) string {
@@ -39,7 +51,7 @@ func formatBytesColor(n int64, enabled bool) string {
 		return plain
 	}
 	if n == 0 {
-		return ansiGrey + plain + ansiReset
+		return colorGrey(plain)
 	}
 	unitStart := 0
 	for unitStart < len(plain) && ((plain[unitStart] >= '0' && plain[unitStart] <= '9') || plain[unitStart] == '.') {
@@ -48,7 +60,7 @@ func formatBytesColor(n int64, enabled bool) string {
 	if unitStart == len(plain) {
 		return plain
 	}
-	return plain[:unitStart] + ansiDimCyan + plain[unitStart:] + ansiReset
+	return plain[:unitStart] + colorDimCyan(plain[unitStart:])
 }
 
 // formatHandshake formats a Unix timestamp as an age relative to now.
@@ -77,18 +89,17 @@ func formatHandshakeColor(ts int64, now time.Time, enabled bool) string {
 		return formatHandshake(ts, now)
 	}
 	if ts == 0 {
-		return ansiGrey + "never" + ansiReset
+		return colorGrey("never")
 	}
 	days, hours, mins, secs := handshakeAgeParts(ts, now)
 
-	color := func(s string) string { return ansiDimCyan + s + ansiReset }
 	switch {
 	case days > 0:
-		return fmt.Sprintf("%s%dh%s%ds", color(fmt.Sprintf("%dd", days)), hours, color(fmt.Sprintf("%dm", mins)), secs)
+		return fmt.Sprintf("%s%dh%s%ds", colorDimCyan(fmt.Sprintf("%dd", days)), hours, colorDimCyan(fmt.Sprintf("%dm", mins)), secs)
 	case hours > 0:
-		return fmt.Sprintf("%dh%s%ds", hours, color(fmt.Sprintf("%dm", mins)), secs)
+		return fmt.Sprintf("%dh%s%ds", hours, colorDimCyan(fmt.Sprintf("%dm", mins)), secs)
 	case mins > 0:
-		return fmt.Sprintf("%s%ds", color(fmt.Sprintf("%dm", mins)), secs)
+		return fmt.Sprintf("%s%ds", colorDimCyan(fmt.Sprintf("%dm", mins)), secs)
 	default:
 		return fmt.Sprintf("%ds", secs)
 	}
