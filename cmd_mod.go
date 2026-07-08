@@ -217,8 +217,8 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 	updatedEntry.Inactive = action == "deactivate"
 	updated.Users[user] = updatedEntry
 
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
@@ -306,8 +306,8 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 
 	updated.Access[user] = normalizeAccessSet(accessSet)
 	normalizeDBAccess(updated)
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)

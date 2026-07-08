@@ -14,8 +14,10 @@ import (
 // Drift is ipset discrepancy between db.yaml and live ipsets.
 // Deltas are the concrete ipset operations needed to reconcile drift.
 func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
-	result := ValidateOffline(cfg, db)
+	result := &CheckResult{}
+	result.HardErrors = append(result.HardErrors, validateDB(db)...)
 	if !result.Clean() {
+		sort.Strings(result.HardErrors)
 		return result
 	}
 
@@ -37,7 +39,7 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 	for name, u := range db.Users {
 		ip := net.ParseIP(u.IP)
 		if ip == nil {
-			continue // already caught by ValidateOffline
+			continue // already caught by validateDB
 		}
 		if !ipNet.Contains(ip) {
 			result.HardErrors = append(result.HardErrors,

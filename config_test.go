@@ -241,7 +241,7 @@ func TestLoadDB_Validation(t *testing.T) {
 	}
 }
 
-// ---- ValidateOffline tests ----
+// ---- validateDB tests ----
 
 func mustLoadTestdata(t *testing.T) (*Config, *DB) {
 	t.Helper()
@@ -256,56 +256,56 @@ func mustLoadTestdata(t *testing.T) (*Config, *DB) {
 	return cfg, db
 }
 
-func TestValidateOffline_Valid(t *testing.T) {
-	cfg, db := mustLoadTestdata(t)
-	result := ValidateOffline(cfg, db)
-	if len(result.HardErrors) != 0 {
-		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+func TestValidateDB_Valid(t *testing.T) {
+	_, db := mustLoadTestdata(t)
+	errs := validateDB(db)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors, got: %v", errs)
 	}
 }
 
-func TestValidateOffline_InvalidUserIP(t *testing.T) {
-	cfg, db := mustLoadTestdata(t)
+func TestValidateDB_InvalidUserIP(t *testing.T) {
+	_, db := mustLoadTestdata(t)
 	db.Users["alice"] = UserEntry{IP: "not-an-ip", Pub: db.Users["alice"].Pub}
-	result := ValidateOffline(cfg, db)
-	if !anyContains(result.HardErrors, "invalid ip") {
-		t.Errorf("expected hard error about invalid ip, got: %v", result.HardErrors)
+	errs := validateDB(db)
+	if !anyContains(errs, "invalid ip") {
+		t.Errorf("expected error about invalid ip, got: %v", errs)
 	}
 }
 
-func TestValidateOffline_IPv6UserIP(t *testing.T) {
-	cfg, db := mustLoadTestdata(t)
+func TestValidateDB_IPv6UserIP(t *testing.T) {
+	_, db := mustLoadTestdata(t)
 	db.Users["alice"] = UserEntry{IP: "::1", Pub: db.Users["alice"].Pub}
-	result := ValidateOffline(cfg, db)
-	if !anyContains(result.HardErrors, "invalid ip") {
-		t.Errorf("expected hard error for IPv6 user ip, got: %v", result.HardErrors)
+	errs := validateDB(db)
+	if !anyContains(errs, "invalid ip") {
+		t.Errorf("expected error for IPv6 user ip, got: %v", errs)
 	}
 }
 
-func TestValidateOffline_IPv6VMIP(t *testing.T) {
-	cfg, db := mustLoadTestdata(t)
+func TestValidateDB_IPv6VMIP(t *testing.T) {
+	_, db := mustLoadTestdata(t)
 	db.VMs["sandbox"] = "2001:db8::1"
-	result := ValidateOffline(cfg, db)
-	if !anyContains(result.HardErrors, "invalid ip") {
-		t.Errorf("expected hard error for IPv6 vm ip, got: %v", result.HardErrors)
+	errs := validateDB(db)
+	if !anyContains(errs, "invalid ip") {
+		t.Errorf("expected error for IPv6 vm ip, got: %v", errs)
 	}
 }
 
-func TestValidateOffline_InvalidVMIP(t *testing.T) {
-	cfg, db := mustLoadTestdata(t)
+func TestValidateDB_InvalidVMIP(t *testing.T) {
+	_, db := mustLoadTestdata(t)
 	db.VMs["sandbox"] = "not-an-ip"
-	result := ValidateOffline(cfg, db)
-	if !anyContains(result.HardErrors, "invalid ip") {
-		t.Errorf("expected hard error about invalid vm ip, got: %v", result.HardErrors)
+	errs := validateDB(db)
+	if !anyContains(errs, "invalid ip") {
+		t.Errorf("expected error about invalid vm ip, got: %v", errs)
 	}
 }
 
-func TestValidateOffline_StarMixedWithVMs(t *testing.T) {
-	cfg, db := mustLoadTestdata(t)
+func TestValidateDB_StarMixedWithVMs(t *testing.T) {
+	_, db := mustLoadTestdata(t)
 	db.Access["alice"] = []string{"*", "sandbox"}
-	result := ValidateOffline(cfg, db)
-	if !anyContains(result.HardErrors, `"*" must be the sole entry`) {
-		t.Errorf("expected hard error about mixed star access, got: %v", result.HardErrors)
+	errs := validateDB(db)
+	if !anyContains(errs, `"*" must be the sole entry`) {
+		t.Errorf("expected error about mixed star access, got: %v", errs)
 	}
 }
 

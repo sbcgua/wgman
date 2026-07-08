@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -68,55 +70,71 @@ func LoadDB(dir string) (*DB, error) {
 		return nil, fmt.Errorf("parse db.yaml: %w", err)
 	}
 
-	if err := validateDB(&db); err != nil {
-		return nil, err
+	if errs := validateDB(&db); len(errs) > 0 {
+		return nil, validationErrors(errs)
 	}
 	return &db, nil
 }
 
-func validateDB(db *DB) error {
+type validationErrors []string
+
+func (errs validationErrors) Error() string {
+	return strings.Join(errs, "; ")
+}
+
+func validateDB(db *DB) []string {
+	var errs []string
+
 	if db.Users == nil {
-		return fmt.Errorf("db.yaml: users section is required")
+		errs = append(errs, "db.yaml: users section is required")
 	}
 	if db.VMs == nil {
-		return fmt.Errorf("db.yaml: vms section is required")
+		errs = append(errs, "db.yaml: vms section is required")
 	}
 
 	// Validate user names and required fields.
 	seenLower := map[string]string{} // lowercase name -> original name
 	for name, u := range db.Users {
 		if !nameRe.MatchString(name) {
-			return fmt.Errorf("db.yaml: invalid user name %q", name)
+			errs = append(errs, fmt.Sprintf("db.yaml: invalid user name %q", name))
 		}
 		if conflict, ok := seenLower[caseFold(name)]; ok {
-			return fmt.Errorf("db.yaml: user name %q conflicts with %q (case)", name, conflict)
+			errs = append(errs, fmt.Sprintf("db.yaml: user name %q conflicts with %q (case)", name, conflict))
 		}
 		seenLower[caseFold(name)] = name
 		if u.IP == "" {
-			return fmt.Errorf("db.yaml: user %q: ip is required", name)
+			errs = append(errs, fmt.Sprintf("db.yaml: user %q: ip is required", name))
+		} else if ip := net.ParseIP(u.IP); ip == nil || ip.To4() == nil {
+			errs = append(errs, fmt.Sprintf("db.yaml: user %q has invalid ip %q", name, u.IP))
 		}
 		if u.Pub == "" {
-			return fmt.Errorf("db.yaml: user %q: pub is required", name)
+			errs = append(errs, fmt.Sprintf("db.yaml: user %q: pub is required", name))
 		}
 	}
 
 	// Validate VM names.
 	seenVMLower := map[string]string{}
-	for name := range db.VMs {
+	for name, ipValue := range db.VMs {
 		if !nameRe.MatchString(name) {
-			return fmt.Errorf("db.yaml: invalid vm name %q", name)
+			errs = append(errs, fmt.Sprintf("db.yaml: invalid vm name %q", name))
 		}
 		if conflict, ok := seenVMLower[caseFold(name)]; ok {
-			return fmt.Errorf("db.yaml: vm name %q conflicts with %q (case)", name, conflict)
+			errs = append(errs, fmt.Sprintf("db.yaml: vm name %q conflicts with %q (case)", name, conflict))
 		}
 		seenVMLower[caseFold(name)] = name
+		if parsed := net.ParseIP(ipValue); parsed == nil || parsed.To4() == nil {
+			errs = append(errs, fmt.Sprintf("db.yaml: vm %q has invalid ip %q", name, ipValue))
+		}
 	}
 
 	// Validate duplicate IPs across users.
 	seenIPs := map[string]string{} // ip -> user name
 	for name, u := range db.Users {
+		if u.IP == "" {
+			continue
+		}
 		if prev, ok := seenIPs[u.IP]; ok {
-			return fmt.Errorf("db.yaml: duplicate ip %s for users %q and %q", u.IP, prev, name)
+			errs = append(errs, fmt.Sprintf("db.yaml: duplicate ip %s for users %q and %q", u.IP, prev, name))
 		}
 		seenIPs[u.IP] = name
 	}
@@ -124,8 +142,11 @@ func validateDB(db *DB) error {
 	// Validate duplicate public keys across users.
 	seenPubs := map[string]string{}
 	for name, u := range db.Users {
+		if u.Pub == "" {
+			continue
+		}
 		if prev, ok := seenPubs[u.Pub]; ok {
-			return fmt.Errorf("db.yaml: duplicate pub key for users %q and %q", prev, name)
+			errs = append(errs, fmt.Sprintf("db.yaml: duplicate pub key for users %q and %q", prev, name))
 		}
 		seenPubs[u.Pub] = name
 	}
@@ -133,27 +154,33 @@ func validateDB(db *DB) error {
 	// Validate access entries.
 	for user, vms := range db.Access {
 		if _, ok := db.Users[user]; !ok {
-			return fmt.Errorf("db.yaml: access references unknown user %q", user)
+			errs = append(errs, fmt.Sprintf("db.yaml: access references unknown user %q", user))
 		}
+		hasAdminStar := false
 		seenAccess := map[string]bool{}
 		for _, vm := range vms {
 			if seenAccess[vm] {
-				return fmt.Errorf("db.yaml: access for user %q contains duplicate entry %q", user, vm)
+				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q contains duplicate entry %q", user, vm))
 			}
 			seenAccess[vm] = true
 			if vm == "*" {
+				hasAdminStar = true
 				continue
 			}
 			if !nameRe.MatchString(vm) {
-				return fmt.Errorf("db.yaml: access for user %q: invalid vm name %q", user, vm)
+				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q: invalid vm name %q", user, vm))
 			}
 			if _, ok := db.VMs[vm]; !ok {
-				return fmt.Errorf("db.yaml: access for user %q references unknown vm %q", user, vm)
+				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q references unknown vm %q", user, vm))
 			}
+		}
+		if hasAdminStar && len(vms) > 1 {
+			errs = append(errs, fmt.Sprintf("db.yaml: user %q: access contains \"*\" mixed with other VMs; \"*\" must be the sole entry", user))
 		}
 	}
 
-	return nil
+	sort.Strings(errs)
+	return errs
 }
 
 // SaveDBAtomic writes db.yaml in a deterministic order using a temporary file

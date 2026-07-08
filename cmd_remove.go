@@ -118,8 +118,8 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	delete(updated.Users, user)
 	delete(updated.Access, user)
 	normalizeDBAccess(updated)
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)

@@ -11,6 +11,9 @@ is needed.
 - Config files are `config.yaml`, `db.yaml`, and `user.conf.template`.
 - YAML loading uses `yaml.Decoder.KnownFields(true)`, so unknown fields are
   rejected.
+- `validateDB` is the single home for DB internal consistency checks. `LoadDB`
+  converts its returned messages to an error, and `Check` reuses the same
+  messages as hard errors before live system validation.
 - User and VM names must match `^[A-Za-z0-9_-]+$`.
 - Names are case-sensitive for lookup, but case-only conflicts are rejected
   with simple ASCII folding (`caseFold`).

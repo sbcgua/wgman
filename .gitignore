@@ -11,6 +11,7 @@ coverage.html
 *.prof
 
 # Temporary files
+.gocache/
 *.tmp
 *.temp
 *.bak

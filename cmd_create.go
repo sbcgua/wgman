@@ -326,8 +326,8 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, pubKey, subnet string
 		updated.Access[args.Name] = append([]string(nil), args.Access...)
 	}
 	normalizeDBAccess(updated)
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, nil, "", fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, nil, "", fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
