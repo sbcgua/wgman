@@ -41,6 +41,11 @@ is needed.
 
 ## Check And Drift Policy
 
+- `check.go` is the read-only reconciliation engine: it validates desired state
+  against live state and produces hard errors and planned deltas.
+- `deploy.go` applies already-planned deltas in dependency-aware order. CLI
+  concerns such as loading files, flags, output, prompts, and exit codes remain
+  in `cmd_check.go` and `cmd_deploy.go`.
 - `CheckResult` separates hard errors from ipset drift.
 - `CheckResult.PeerDeltas` holds safe WireGuard peer operations for known DB
   users, such as adding missing active peers and removing live peers for
