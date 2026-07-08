@@ -109,21 +109,3 @@ func TestFormatHandshake_FutureTimestamp(t *testing.T) {
 		t.Errorf("future timestamp: got %q, want 0s", got)
 	}
 }
-
-var endpointHostTests = []struct {
-	input, want string
-}{
-	{"(none)", "(none)"},
-	{"192.168.1.100:50001", "192.168.1.100"},
-	{"10.0.0.1:51820", "10.0.0.1"},
-	{"myhost.example.com:12345", "myhost.example.com"},
-}
-
-func TestEndpointHost(t *testing.T) {
-	for _, tc := range endpointHostTests {
-		got := endpointHost(tc.input)
-		if got != tc.want {
-			t.Errorf("endpointHost(%q) = %q, want %q", tc.input, got, tc.want)
-		}
-	}
-}

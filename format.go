@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"net"
 	"strings"
 	"time"
 )
@@ -158,17 +157,4 @@ func handshakeAgeParts(ts int64, now time.Time) (days, hours, mins, secs int64) 
 	hours = age % 24
 	days = age / 24
 	return days, hours, mins, secs
-}
-
-// endpointHost strips the port from a "host:port" endpoint string.
-// Returns "(none)" unchanged.
-func endpointHost(endpoint string) string {
-	if endpoint == "(none)" {
-		return "(none)"
-	}
-	host, _, err := net.SplitHostPort(endpoint)
-	if err != nil {
-		return endpoint // already plain host or unparseable
-	}
-	return host
 }
