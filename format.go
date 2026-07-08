@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -23,6 +25,45 @@ func colorRed(s string) string {
 
 func colorDimCyan(s string) string {
 	return ansiDimCyan + s + ansiReset
+}
+
+type tableCell struct {
+	plain   string
+	display string
+}
+
+func writeTable(w io.Writer, headers []string, rows [][]tableCell) {
+	widths := make([]int, len(headers))
+	for i, header := range headers {
+		widths[i] = len(header)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if len(cell.plain) > widths[i] {
+				widths[i] = len(cell.plain)
+			}
+		}
+	}
+
+	headerCells := make([]tableCell, len(headers))
+	for i, header := range headers {
+		headerCells[i] = tableCell{plain: header, display: header}
+	}
+	writeTableRow(w, headerCells, widths)
+	for _, row := range rows {
+		writeTableRow(w, row, widths)
+	}
+}
+
+func writeTableRow(w io.Writer, row []tableCell, widths []int) {
+	for i, cell := range row {
+		if i == len(row)-1 {
+			fmt.Fprintln(w, cell.display)
+			return
+		}
+		fmt.Fprint(w, cell.display)
+		fmt.Fprint(w, strings.Repeat(" ", widths[i]-len(cell.plain)+2))
+	}
 }
 
 // formatBytes converts a byte count to a compact human-readable string.

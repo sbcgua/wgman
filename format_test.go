@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"testing"
 	"time"
 )
@@ -26,6 +27,30 @@ func TestFormatBytes(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("formatBytes(%d) = %q, want %q", tc.n, got, tc.want)
 		}
+	}
+}
+
+func TestWriteTable(t *testing.T) {
+	var out bytes.Buffer
+	rows := [][]tableCell{
+		{
+			{plain: "bob", display: colorGrey("bob")},
+			{plain: "ok", display: "ok"},
+		},
+		{
+			{plain: "alexandra", display: "alexandra"},
+			{plain: "needs-work", display: colorRed("needs-work")},
+		},
+	}
+
+	writeTable(&out, []string{"NAME", "STATUS"}, rows)
+
+	want := "" +
+		"NAME       STATUS\n" +
+		colorGrey("bob") + "        ok\n" +
+		"alexandra  " + colorRed("needs-work") + "\n"
+	if got := out.String(); got != want {
+		t.Errorf("writeTable() = %q, want %q", got, want)
 	}
 }
 
