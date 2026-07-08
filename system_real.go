@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +15,15 @@ type RealSystem struct{}
 
 func (r *RealSystem) IsRoot() bool {
 	return os.Getuid() == 0
+}
+
+func (r *RealSystem) IsTerminal(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // InterfaceSubnet returns the first IPv4 CIDR address on iface, e.g. "10.8.0.1/24".

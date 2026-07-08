@@ -76,29 +76,26 @@ func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
 // App holds all injectable dependencies for command handlers.
 // main() is the only place that constructs an App backed by real OS resources.
 type App struct {
-	Sys         SystemAdapter
-	Stdin       io.Reader
-	Stdout      io.Writer
-	Stderr      io.Writer
-	Now         func() time.Time
-	IsStdoutTTY func() bool
+	Sys    SystemAdapter
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	Now    func() time.Time
 }
 
 // newRealApp returns an App wired to real OS dependencies.
 func newRealApp() *App {
 	return &App{
-		Sys:         &RealSystem{},
-		Stdin:       os.Stdin,
-		Stdout:      os.Stdout,
-		Stderr:      os.Stderr,
-		Now:         time.Now,
-		IsStdoutTTY: isStdoutTTY,
+		Sys:    &RealSystem{},
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Now:    time.Now,
 	}
 }
 
-func isStdoutTTY() bool {
-	info, err := os.Stdout.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+func (app *App) IsStdoutTTY() bool {
+	return app.Sys.IsTerminal(app.Stdout)
 }
 
 // run is the entry point called from main; it builds a real App and delegates.

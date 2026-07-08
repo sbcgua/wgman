@@ -40,7 +40,7 @@ func cmdList(gf *globalFlags, args []string, app *App) int {
 		filter = args[0]
 	}
 	color := false
-	if !gf.noColor && app.IsStdoutTTY != nil {
+	if !gf.noColor {
 		color = app.IsStdoutTTY()
 	}
 	return runListWithColor(db, result, filter, app.Stdout, app.Stderr, color)

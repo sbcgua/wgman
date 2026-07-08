@@ -108,8 +108,8 @@ is needed.
 - `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
 - `--no-color` is a global output flag. Color decisions go through `App`'s
-  injectable stdout TTY boundary; tests and non-TTY output default to plain
-  text.
+  stdout TTY boundary, which delegates terminal detection to `SystemAdapter`;
+  tests and non-TTY output default to plain text.
 - `create` and `mod` do not prompt after validation.
 - `add` is a CLI alias for `create`.
 - `create`/`add` support `-c <comment>` for storing user metadata. The value

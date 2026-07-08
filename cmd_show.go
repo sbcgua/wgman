@@ -34,7 +34,7 @@ func cmdShow(gf *globalFlags, args []string, app *App) int {
 
 	result := Check(cfg, db, app.Sys)
 	color := false
-	if !gf.noColor && app.IsStdoutTTY != nil {
+	if !gf.noColor {
 		color = app.IsStdoutTTY()
 	}
 	return runShowWithColor(db, result, app.Now(), app.Stdout, app.Stderr, color)

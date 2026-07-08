@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,6 +61,8 @@ func (h *testHelper) assertError(err error, want string) {
 // Fields can be populated per test case as needed.
 type fakeSystem struct {
 	isRoot         bool
+	isTerminal     bool
+	terminalWriter io.Writer
 	subnetResult   string
 	subnetErr      error
 	wgDumpResult   string
@@ -87,6 +90,11 @@ func newFakeSystem() *fakeSystem {
 }
 
 func (f *fakeSystem) IsRoot() bool { return f.isRoot }
+
+func (f *fakeSystem) IsTerminal(w io.Writer) bool {
+	f.terminalWriter = w
+	return f.isTerminal
+}
 
 func (f *fakeSystem) InterfaceSubnet(_ string) (string, error) {
 	return f.subnetResult, f.subnetErr

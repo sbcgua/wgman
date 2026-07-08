@@ -52,6 +52,20 @@ func TestRunApp_HelpOutputSmoke(t *testing.T) {
 	}
 }
 
+func TestAppIsStdoutTTYDelegatesConfiguredStdout(t *testing.T) {
+	sys := newFakeSystem()
+	sys.isTerminal = true
+	var stdout strings.Builder
+	app := &App{Sys: sys, Stdout: &stdout}
+
+	if !app.IsStdoutTTY() {
+		t.Fatal("IsStdoutTTY() = false, want true")
+	}
+	if sys.terminalWriter != app.Stdout {
+		t.Error("IsStdoutTTY() did not inspect App.Stdout")
+	}
+}
+
 func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -60,7 +74,7 @@ func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
 	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
-	app.IsStdoutTTY = func() bool { return true }
+	sys.isTerminal = true
 	code := runApp([]string{"show", "--no-color", "--config-dir", dir}, app)
 	if code != 0 {
 		t.Fatalf("show --no-color exit code = %d, want 0; stderr: %s", code, stderr.String())
@@ -78,7 +92,7 @@ func TestRunApp_ShowColorsInteractiveTTY(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
 	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
-	app.IsStdoutTTY = func() bool { return true }
+	sys.isTerminal = true
 	code := runApp([]string{"show", "--config-dir", dir}, app)
 	if code != 0 {
 		t.Fatalf("show TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
@@ -96,7 +110,7 @@ func TestRunApp_ShowNonTTYHasNoColor(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
 	app.Now = func() time.Time { return time.Unix(1748001000, 0) }
-	app.IsStdoutTTY = func() bool { return false }
+	sys.isTerminal = false
 	code := runApp([]string{"show", "--config-dir", dir}, app)
 	if code != 0 {
 		t.Fatalf("show non-TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
@@ -113,7 +127,7 @@ func TestRunApp_ListNoColorSuppressesTTYColor(t *testing.T) {
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
-	app.IsStdoutTTY = func() bool { return true }
+	sys.isTerminal = true
 	code := runApp([]string{"list", "--no-color", "--config-dir", dir}, app)
 	if code != 0 {
 		t.Fatalf("list --no-color exit code = %d, want 0; stderr: %s", code, stderr.String())
@@ -130,7 +144,7 @@ func TestRunApp_ListColorsInteractiveTTY(t *testing.T) {
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
-	app.IsStdoutTTY = func() bool { return true }
+	sys.isTerminal = true
 	code := runApp([]string{"list", "--config-dir", dir}, app)
 	if code != 0 {
 		t.Fatalf("list TTY exit code = %d, want 0; stderr: %s", code, stderr.String())
