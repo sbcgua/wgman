@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -94,7 +95,7 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	dbChanged := !sameStringSlices(db.Access[args[0]], updated.Access[args[0]])
+	dbChanged := !slices.Equal(db.Access[args[0]], updated.Access[args[0]])
 	if len(deltas) == 0 && !dbChanged {
 		fmt.Fprintln(app.Stdout, "mod: no changes needed")
 		return 0

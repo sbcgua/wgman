@@ -44,28 +44,6 @@ func TestCaseFold(t *testing.T) {
 	}
 }
 
-func TestSameStringSlices(t *testing.T) {
-	tests := []struct {
-		name string
-		a    []string
-		b    []string
-		want bool
-	}{
-		{name: "equal", a: []string{"alice", "bob"}, b: []string{"alice", "bob"}, want: true},
-		{name: "different order", a: []string{"alice", "bob"}, b: []string{"bob", "alice"}, want: false},
-		{name: "different length", a: []string{"alice"}, b: []string{"alice", "bob"}, want: false},
-		{name: "nil and empty", a: nil, b: []string{}, want: true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := sameStringSlices(tc.a, tc.b); got != tc.want {
-				t.Errorf("sameStringSlices(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestEndpointHost(t *testing.T) {
 	tests := []struct {
 		input string
