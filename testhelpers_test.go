@@ -37,6 +37,37 @@ func (h *testHelper) writeFile(dir, name, content string) {
 	}
 }
 
+// writeValidTestData writes the standard valid config and DB command fixture.
+func writeValidTestData(h *testHelper, dir string) {
+	h.writeFile(dir, "config.yaml", `interface: wg0
+sets:
+  all: wg_allow_all
+  matrix: wg_allow_matrix
+`)
+	h.writeFile(dir, "db.yaml", `users:
+  admin:
+    ip: 10.8.0.5
+    pub: ADMIN_PUB=
+  alice:
+    ip: 10.8.0.10
+    pub: ALICE_PUB=
+  bob:
+    ip: 10.8.0.15
+    pub: BOB_PUB=
+vms:
+  sandbox: 192.168.122.100
+  mailvm: 192.168.122.101
+access:
+  admin:
+    - "*"
+  alice:
+    - sandbox
+  bob:
+    - sandbox
+    - mailvm
+`)
+}
+
 // assertNoError fails the test if err is non-nil.
 func (h *testHelper) assertNoError(err error) {
 	h.t.Helper()

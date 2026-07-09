@@ -8,7 +8,7 @@ import (
 )
 
 func writeCreateTestData(h *testHelper, dir string) {
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	h.writeFile(dir, "user.conf.template", `[Interface]
 PrivateKey = $CLIENT_PRIVATE_KEY
 Address = $CLIENT_VPN_IP/32

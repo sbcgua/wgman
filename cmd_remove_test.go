@@ -37,7 +37,7 @@ func TestPlanRemoveUser(t *testing.T) {
 func TestRemove_MissingUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"nobody"}, app)
@@ -52,7 +52,7 @@ func TestRemove_MissingUser(t *testing.T) {
 func TestRemove_RejectsPreExistingDrift(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildDriftFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"alice"}, app)
@@ -67,7 +67,7 @@ func TestRemove_RejectsPreExistingDrift(t *testing.T) {
 func TestRemove_DryRunDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -96,7 +96,7 @@ func TestRemove_DryRunDoesNotWriteOrApply(t *testing.T) {
 func TestRemove_ConfirmationRejectedPreventsWriteAndApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -125,7 +125,7 @@ func TestRemove_ConfirmationRejectedPreventsWriteAndApply(t *testing.T) {
 func TestRemove_YesAppliesWithoutPrompt(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"alice"}, app)
@@ -143,7 +143,7 @@ func TestRemove_YesAppliesWithoutPrompt(t *testing.T) {
 func TestRemove_WritesDBAndAppliesSystemOps(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, _ := makeDeployApp(sys, "y\n")
 	code := cmdRemove(&globalFlags{configDir: dir}, []string{"bob"}, app)
@@ -183,7 +183,7 @@ func TestRemove_WritesDBAndAppliesSystemOps(t *testing.T) {
 func TestRemove_WGDelFailureRollsBackIPSetsAndDoesNotWriteDB(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -227,7 +227,7 @@ func TestRemove_WGDelFailureRollsBackIPSetsAndDoesNotWriteDB(t *testing.T) {
 func TestRemove_SaveDBFailureRollsBackLiveState(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -279,7 +279,7 @@ func TestRemove_SaveDBFailureRollsBackLiveState(t *testing.T) {
 func TestRemove_AdminDeletesAllAccessSetEntry(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, _ := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"admin"}, app)

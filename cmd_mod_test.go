@@ -91,7 +91,7 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 func TestMod_RefusesMissingUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"nobody", "+sandbox"}, app)
@@ -106,7 +106,7 @@ func TestMod_RefusesMissingUser(t *testing.T) {
 func TestMod_RefusesUnknownVM(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+unknown"}, app)
@@ -121,7 +121,7 @@ func TestMod_RefusesUnknownVM(t *testing.T) {
 func TestMod_RejectsUnknownBareOperation(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "enable"}, app)
@@ -136,7 +136,7 @@ func TestMod_RejectsUnknownBareOperation(t *testing.T) {
 func TestMod_RefusesPreExistingDrift(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildDriftFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+mailvm"}, app)
@@ -151,7 +151,7 @@ func TestMod_RefusesPreExistingDrift(t *testing.T) {
 func TestMod_DryRunDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -180,7 +180,7 @@ func TestMod_DryRunDoesNotWriteOrApply(t *testing.T) {
 func TestMod_DeactivateDryRunDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -238,7 +238,7 @@ func TestMod_ActivateDryRunDoesNotWriteOrApply(t *testing.T) {
 func TestMod_ValidationFailureDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -267,7 +267,7 @@ func TestMod_ValidationFailureDoesNotWriteOrApply(t *testing.T) {
 func TestMod_SuccessWritesDBAndAppliesDelta(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+mailvm"}, app)
@@ -301,7 +301,7 @@ func TestMod_SuccessWritesDBAndAppliesDelta(t *testing.T) {
 func TestMod_DeactivateWritesInactiveDeletesIPSetsAndPeer(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "deactivate"}, app)
@@ -424,7 +424,7 @@ func TestMod_RedundantTogglesAreNoOps(t *testing.T) {
 	}{
 		{
 			name:       "activate active user",
-			writeData:  writeDeployTestData,
+			writeData:  writeValidTestData,
 			sys:        buildCleanFakeSystem(),
 			args:       []string{"alice", "activate"},
 			wantOutput: "already active",
@@ -460,7 +460,7 @@ func TestMod_RedundantTogglesAreNoOps(t *testing.T) {
 func TestMod_RemoveAbsentAccessNoOp(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "-mailvm"}, app)

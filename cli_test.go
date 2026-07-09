@@ -103,7 +103,7 @@ func TestParseCommandArgsAcceptsFlagsBeforeAndAfterCommand(t *testing.T) {
 func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
@@ -121,7 +121,7 @@ func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
 func TestRunApp_ShowColorsInteractiveTTY(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
@@ -139,7 +139,7 @@ func TestRunApp_ShowColorsInteractiveTTY(t *testing.T) {
 func TestRunApp_ShowNonTTYHasNoColor(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
@@ -157,7 +157,7 @@ func TestRunApp_ShowNonTTYHasNoColor(t *testing.T) {
 func TestRunApp_ListNoColorSuppressesTTYColor(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
@@ -174,7 +174,7 @@ func TestRunApp_ListNoColorSuppressesTTYColor(t *testing.T) {
 func TestRunApp_ListColorsInteractiveTTY(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")
@@ -312,7 +312,7 @@ func TestRunApp_CheckNotRoot(t *testing.T) {
 func TestRunApp_ModExpressionMayStartWithDash(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	sys := buildCleanFakeSystem()
 	app, stdout, stderr := makeDeployApp(sys, "")

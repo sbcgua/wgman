@@ -8,7 +8,7 @@ import (
 func TestCmdCheckSmoke(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 
 	var stdout, stderr strings.Builder
 	app := &App{
