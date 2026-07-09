@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -264,14 +263,6 @@ func rollbackCreateLiveState(iface, pubKey, clientConfigPath string, appliedDelt
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
-}
-
-func printApplyAndRollbackError(w io.Writer, err, rollbackErr error) {
-	if rollbackErr != nil {
-		fmt.Fprintf(w, "error: %v (rollback failed: %v)\n", err, rollbackErr)
-		return
-	}
-	fmt.Fprintln(w, "error:", err)
 }
 
 func planCreateUser(cfg *Config, db *DB, args *createArgs, pubKey, subnet string) (*DB, []IpsetDeltaOp, string, error) {

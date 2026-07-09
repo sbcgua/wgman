@@ -3,37 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"strings"
 )
-
-// printDeltas writes a human-readable summary of planned ipset operations to w.
-func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
-	for _, d := range deltas {
-		if d.Add {
-			if d.Comment != "" {
-				fmt.Fprintf(w, "  add %s %s  # %s\n", d.Set, d.Entry, d.Comment)
-			} else {
-				fmt.Fprintf(w, "  add %s %s\n", d.Set, d.Entry)
-			}
-		} else {
-			fmt.Fprintf(w, "  del %s %s\n", d.Set, d.Entry)
-		}
-	}
-}
-
-// printPeerDeltas writes a human-readable summary of planned WireGuard peer
-// operations to w.
-func printPeerDeltas(deltas []WGPeerDeltaOp, w io.Writer) {
-	for _, d := range deltas {
-		switch {
-		case d.Add:
-			fmt.Fprintf(w, "  add wg peer %s %s %s\n", d.User, d.PubKey, d.AllowedIP)
-		case d.Remove:
-			fmt.Fprintf(w, "  remove wg peer %s %s\n", d.User, d.PubKey)
-		}
-	}
-}
 
 // cmdDeploy implements "wgman deploy".
 // It calls internal check, refuses on hard errors, reports planned ipset and

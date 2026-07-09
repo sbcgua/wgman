@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 )
@@ -136,17 +135,4 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 		Pub:       entry.Pub,
 		Access:    access,
 	}, nil
-}
-
-func printRemovePlan(plan *removePlan, w io.Writer) {
-	fmt.Fprintf(w, "remove: planned removal of %s (%s)\n", plan.User, plan.IP)
-	if len(plan.Access) == 0 {
-		fmt.Fprintln(w, "remove: access: (none)")
-	} else {
-		fmt.Fprintf(w, "remove: access: %s\n", strings.Join(plan.Access, ", "))
-	}
-	if len(plan.Deltas) > 0 {
-		fmt.Fprintf(w, "remove: planned access changes (%d):\n", len(plan.Deltas))
-		printDeltas(plan.Deltas, w)
-	}
 }
