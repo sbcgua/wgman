@@ -183,6 +183,58 @@ func validateDB(db *DB) []string {
 	return errs
 }
 
+// cloneDB returns an independent copy suitable for planning DB changes.
+func cloneDB(db *DB) *DB {
+	out := &DB{
+		Users:  make(map[string]UserEntry, len(db.Users)),
+		VMs:    make(map[string]string, len(db.VMs)),
+		Access: make(map[string][]string, len(db.Access)),
+	}
+	for name, user := range db.Users {
+		out.Users[name] = user
+	}
+	for name, ip := range db.VMs {
+		out.VMs[name] = ip
+	}
+	for name, entries := range db.Access {
+		out.Access[name] = append([]string(nil), entries...)
+	}
+	return out
+}
+
+// normalizeDBAccess sorts and deduplicates access lists and removes empty ones.
+func normalizeDBAccess(db *DB) {
+	for user, entries := range db.Access {
+		if len(entries) == 0 {
+			delete(db.Access, user)
+			continue
+		}
+		set := map[string]bool{}
+		for _, entry := range entries {
+			set[entry] = true
+		}
+		normalized := normalizeAccessSet(set)
+		if len(normalized) == 0 {
+			delete(db.Access, user)
+		} else {
+			db.Access[user] = normalized
+		}
+	}
+}
+
+// normalizeAccessSet converts an access set into a sorted list.
+func normalizeAccessSet(set map[string]bool) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	entries := make([]string, 0, len(set))
+	for entry := range set {
+		entries = append(entries, entry)
+	}
+	sort.Strings(entries)
+	return entries
+}
+
 // SaveDBAtomic writes db.yaml in a deterministic order using a temporary file
 // in the same directory, then renames it into place.
 func SaveDBAtomic(dir string, db *DB) error {

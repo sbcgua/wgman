@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -347,6 +348,54 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	}
 	if loaded.Users["bob"].Comment != "temporary contractor" || !loaded.Users["bob"].Inactive {
 		t.Errorf("bob metadata = %+v, want comment and inactive true", loaded.Users["bob"])
+	}
+}
+
+func TestCloneDBIsIndependent(t *testing.T) {
+	original := &DB{
+		Users:  map[string]UserEntry{"alice": {IP: "10.8.0.10", Pub: "ALICE"}},
+		VMs:    map[string]string{"sandbox": "192.168.122.100"},
+		Access: map[string][]string{"alice": {"sandbox"}},
+	}
+
+	cloned := cloneDB(original)
+	cloned.Users["alice"] = UserEntry{IP: "10.8.0.20", Pub: "CHANGED"}
+	cloned.VMs["sandbox"] = "192.168.122.200"
+	cloned.Access["alice"][0] = "changed"
+
+	if original.Users["alice"].IP != "10.8.0.10" {
+		t.Error("cloneDB() aliased the users map")
+	}
+	if original.VMs["sandbox"] != "192.168.122.100" {
+		t.Error("cloneDB() aliased the VMs map")
+	}
+	if original.Access["alice"][0] != "sandbox" {
+		t.Error("cloneDB() aliased an access slice")
+	}
+}
+
+func TestNormalizeDBAccess(t *testing.T) {
+	db := &DB{Access: map[string][]string{
+		"alice": {"sandbox", "mail", "sandbox"},
+		"bob":   {},
+	}}
+
+	normalizeDBAccess(db)
+
+	want := map[string][]string{"alice": {"mail", "sandbox"}}
+	if !reflect.DeepEqual(db.Access, want) {
+		t.Errorf("normalized access = %#v, want %#v", db.Access, want)
+	}
+}
+
+func TestNormalizeAccessSet(t *testing.T) {
+	if got := normalizeAccessSet(nil); got != nil {
+		t.Errorf("normalizeAccessSet(nil) = %#v, want nil", got)
+	}
+	got := normalizeAccessSet(map[string]bool{"sandbox": true, "mail": true})
+	want := []string{"mail", "sandbox"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("normalizeAccessSet() = %#v, want %#v", got, want)
 	}
 }
 
