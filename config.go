@@ -339,14 +339,3 @@ func boolNode(value bool) *yaml.Node {
 	}
 	return node
 }
-
-// caseFold lowercases a string for case-insensitive comparison.
-func caseFold(s string) string {
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 32
-		}
-	}
-	return string(b)
-}

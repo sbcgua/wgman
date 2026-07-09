@@ -19,6 +19,31 @@ func TestSortedKeys(t *testing.T) {
 	}
 }
 
+func TestIsValidIPv4OrCIDR(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{input: "10.8.0.5", want: true},
+		{input: "10.8.0.0/24", want: true},
+		{input: "not-an-ip", want: false},
+		{input: "2001:db8::1", want: false},
+		{input: "2001:db8::/32", want: false},
+	}
+
+	for _, tc := range tests {
+		if got := isValidIPv4OrCIDR(tc.input); got != tc.want {
+			t.Errorf("isValidIPv4OrCIDR(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestCaseFold(t *testing.T) {
+	if got, want := caseFold("Alice_BOB-42"), "alice_bob-42"; got != want {
+		t.Errorf("caseFold() = %q, want %q", got, want)
+	}
+}
+
 func TestEndpointHost(t *testing.T) {
 	tests := []struct {
 		input string

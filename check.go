@@ -290,12 +290,3 @@ func validateMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
 	}
 	return errs
 }
-
-// isValidIPv4OrCIDR returns true if s is a valid IPv4 address or IPv4 CIDR.
-func isValidIPv4OrCIDR(s string) bool {
-	if ip := net.ParseIP(s); ip != nil && ip.To4() != nil {
-		return true
-	}
-	_, ipNet, err := net.ParseCIDR(s)
-	return err == nil && ipNet.IP.To4() != nil
-}
