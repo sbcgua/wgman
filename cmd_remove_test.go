@@ -224,6 +224,53 @@ func TestRemove_WGDelFailureRollsBackIPSetsAndDoesNotWriteDB(t *testing.T) {
 	}
 }
 
+func TestRemove_IPSetPartialFailureRollsBackAppliedDeltas(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeValidTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+	sys := buildCleanFakeSystem()
+	sys.ipsetDelErrs = map[string]error{
+		"wg_allow_matrix:10.8.0.15,192.168.122.101": os.ErrPermission,
+	}
+	app, _, stderr := makeDeployApp(sys, "y\n")
+	code := cmdRemove(&globalFlags{configDir: dir}, []string{"bob"}, app)
+	if code == 0 {
+		t.Fatal("remove should fail when an ipset delete fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after ipset delete failure")
+	}
+	wantOps := []string{
+		"del:wg_allow_matrix:10.8.0.15,192.168.122.100",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.100:bob -> sandbox",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing rollback op %q from %v", want, sys.appliedOps)
+		}
+	}
+	if strings.Contains(strings.Join(sys.appliedOps, "\n"), "wgdel:wg0:BOB_PUB=") {
+		t.Errorf("WireGuard peer should not be deleted after ipset failure, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
+	}
+}
+
 func TestRemove_SaveDBFailureRollsBackLiveState(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()

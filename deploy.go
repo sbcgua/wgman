@@ -8,18 +8,8 @@ import (
 // ApplyDeltas applies ipset add/delete operations from deltas through sys.
 // Operations are applied in order; the first error encountered is returned.
 func ApplyDeltas(deltas []IpsetDeltaOp, sys SystemAdapter) error {
-	for _, d := range deltas {
-		if d.Add {
-			if err := sys.IPSetAdd(d.Set, d.Entry, d.Comment); err != nil {
-				return err
-			}
-		} else {
-			if err := sys.IPSetDel(d.Set, d.Entry); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	_, err := ApplyDeltasTracked(deltas, sys)
+	return err
 }
 
 // ApplyDeltasTracked applies deltas and returns the operations that completed

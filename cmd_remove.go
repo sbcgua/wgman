@@ -72,7 +72,8 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 
 	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, app.Sys)
 	if err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
+		rollbackErr := ApplyDeltas(InvertDeltas(appliedDeltas), app.Sys)
+		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
 	if err := app.Sys.WGDelPeer(cfg.Interface, plan.Pub); err != nil {
