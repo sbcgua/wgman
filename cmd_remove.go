@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"sort"
@@ -58,13 +57,7 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 	}
 
 	if !gf.yes {
-		fmt.Fprint(app.Stdout, "Remove this user? [y/N] ")
-		scanner := bufio.NewScanner(app.Stdin)
-		answer := ""
-		if scanner.Scan() {
-			answer = strings.TrimSpace(scanner.Text())
-		}
-		if answer != "y" && answer != "Y" {
+		if !confirmAction(app.Stdin, app.Stdout, "Remove this user? [y/N] ") {
 			fmt.Fprintln(app.Stdout, "remove: aborted")
 			return 0
 		}

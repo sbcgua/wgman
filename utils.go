@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
+	"io"
 	"net"
 	"sort"
 	"strings"
@@ -39,6 +42,16 @@ func splitLines(s string) []string {
 		}
 	}
 	return lines
+}
+
+func confirmAction(in io.Reader, out io.Writer, prompt string) bool {
+	fmt.Fprint(out, prompt)
+	scanner := bufio.NewScanner(in)
+	answer := ""
+	if scanner.Scan() {
+		answer = strings.TrimSpace(scanner.Text())
+	}
+	return answer == "y" || answer == "Y"
 }
 
 // isValidIPv4OrCIDR returns true if s is a valid IPv4 address or IPv4 CIDR.

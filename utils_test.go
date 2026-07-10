@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +62,32 @@ func TestEndpointHost(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("endpointHost(%q) = %q, want %q", tc.input, got, tc.want)
 		}
+	}
+}
+
+func TestConfirmAction(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "lower yes", input: "y\n", want: true},
+		{name: "upper yes trimmed", input: " Y \n", want: true},
+		{name: "word yes rejected", input: "yes\n", want: false},
+		{name: "default no", input: "\n", want: false},
+		{name: "eof", input: "", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			got := confirmAction(strings.NewReader(tc.input), &out, "Continue? [y/N] ")
+			if got != tc.want {
+				t.Errorf("confirmAction() = %v, want %v", got, tc.want)
+			}
+			if out.String() != "Continue? [y/N] " {
+				t.Errorf("prompt output = %q", out.String())
+			}
+		})
 	}
 }

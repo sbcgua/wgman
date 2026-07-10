@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"strings"
 )
 
 // cmdDeploy implements "wgman deploy".
@@ -59,13 +57,7 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 	}
 
 	if !gf.yes {
-		fmt.Fprint(app.Stdout, "Apply these changes? [y/N] ")
-		scanner := bufio.NewScanner(app.Stdin)
-		answer := ""
-		if scanner.Scan() {
-			answer = strings.TrimSpace(scanner.Text())
-		}
-		if answer != "y" && answer != "Y" {
+		if !confirmAction(app.Stdin, app.Stdout, "Apply these changes? [y/N] ") {
 			fmt.Fprintln(app.Stdout, "deploy: aborted")
 			return 0
 		}
