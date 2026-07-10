@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -315,45 +314,4 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 	newAll, newMatrix := computeExpectedIPSets(updated)
 	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
 	return updated, deltas, nil
-}
-
-func diffExpectedIPSets(cfg *Config, oldAll, oldMatrix, newAll, newMatrix map[string]string) []IpsetDeltaOp {
-	var deltas []IpsetDeltaOp
-	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.All, oldAll, newAll)...)
-	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.Matrix, oldMatrix, newMatrix)...)
-	sort.Slice(deltas, func(i, j int) bool {
-		if deltas[i].Set != deltas[j].Set {
-			return deltas[i].Set < deltas[j].Set
-		}
-		if deltas[i].Entry != deltas[j].Entry {
-			return deltas[i].Entry < deltas[j].Entry
-		}
-		return !deltas[i].Add && deltas[j].Add
-	})
-	return deltas
-}
-
-func diffExpectedIPSet(setname string, oldExpected, newExpected map[string]string) []IpsetDeltaOp {
-	var deltas []IpsetDeltaOp
-	for entry, comment := range newExpected {
-		if _, ok := oldExpected[entry]; !ok {
-			deltas = append(deltas, IpsetDeltaOp{
-				Set:     setname,
-				Entry:   entry,
-				Comment: comment,
-				Add:     true,
-			})
-		}
-	}
-	for entry, comment := range oldExpected {
-		if _, ok := newExpected[entry]; !ok {
-			deltas = append(deltas, IpsetDeltaOp{
-				Set:     setname,
-				Entry:   entry,
-				Comment: comment,
-				Add:     false,
-			})
-		}
-	}
-	return deltas
 }

@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // ApplyDeltas applies ipset add/delete operations from deltas through sys.
 // Operations are applied in order; the first error encountered is returned.
@@ -47,6 +50,47 @@ func InvertDeltas(deltas []IpsetDeltaOp) []IpsetDeltaOp {
 		inverted = append(inverted, d)
 	}
 	return inverted
+}
+
+func diffExpectedIPSets(cfg *Config, oldAll, oldMatrix, newAll, newMatrix map[string]string) []IpsetDeltaOp {
+	var deltas []IpsetDeltaOp
+	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.All, oldAll, newAll)...)
+	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.Matrix, oldMatrix, newMatrix)...)
+	sort.Slice(deltas, func(i, j int) bool {
+		if deltas[i].Set != deltas[j].Set {
+			return deltas[i].Set < deltas[j].Set
+		}
+		if deltas[i].Entry != deltas[j].Entry {
+			return deltas[i].Entry < deltas[j].Entry
+		}
+		return !deltas[i].Add && deltas[j].Add
+	})
+	return deltas
+}
+
+func diffExpectedIPSet(setname string, oldExpected, newExpected map[string]string) []IpsetDeltaOp {
+	var deltas []IpsetDeltaOp
+	for entry, comment := range newExpected {
+		if _, ok := oldExpected[entry]; !ok {
+			deltas = append(deltas, IpsetDeltaOp{
+				Set:     setname,
+				Entry:   entry,
+				Comment: comment,
+				Add:     true,
+			})
+		}
+	}
+	for entry, comment := range oldExpected {
+		if _, ok := newExpected[entry]; !ok {
+			deltas = append(deltas, IpsetDeltaOp{
+				Set:     setname,
+				Entry:   entry,
+				Comment: comment,
+				Add:     false,
+			})
+		}
+	}
+	return deltas
 }
 
 // ApplyPeerDeltas applies WireGuard peer operations from deltas through sys.

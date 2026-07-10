@@ -50,6 +50,51 @@ func TestInvertDeltasReversesOrderAndOperation(t *testing.T) {
 	}
 }
 
+func TestDiffExpectedIPSetsBuildsStableDeltas(t *testing.T) {
+	cfg := &Config{
+		Sets: ConfigSets{
+			All:    "wg_allow_all",
+			Matrix: "wg_allow_matrix",
+		},
+	}
+	oldAll := map[string]string{
+		"10.8.0.5": "",
+	}
+	oldMatrix := map[string]string{
+		"10.8.0.10,192.168.122.100": "alice -> sandbox",
+	}
+	newAll := map[string]string{
+		"10.8.0.6": "",
+	}
+	newMatrix := map[string]string{
+		"10.8.0.10,192.168.122.101": "alice -> mailvm",
+	}
+
+	got := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
+	want := []IpsetDeltaOp{
+		{Set: "wg_allow_all", Entry: "10.8.0.5"},
+		{Set: "wg_allow_all", Entry: "10.8.0.6", Add: true},
+		{Set: "wg_allow_matrix", Entry: "10.8.0.10,192.168.122.100", Comment: "alice -> sandbox"},
+		{Set: "wg_allow_matrix", Entry: "10.8.0.10,192.168.122.101", Comment: "alice -> mailvm", Add: true},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("diffExpectedIPSets() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDiffExpectedIPSetNoChanges(t *testing.T) {
+	expected := map[string]string{
+		"10.8.0.10,192.168.122.100": "alice -> sandbox",
+	}
+
+	got := diffExpectedIPSet("wg_allow_matrix", expected, expected)
+
+	if len(got) != 0 {
+		t.Errorf("diffExpectedIPSet() = %#v, want no deltas", got)
+	}
+}
+
 func TestApplyStateDeltasUsesDependencyOrder(t *testing.T) {
 	sys := newFakeSystem()
 	ipsetDeltas := []IpsetDeltaOp{
