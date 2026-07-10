@@ -1,9 +1,7 @@
 # Implementation Notes
 
 These notes capture project conventions and design decisions that are useful for
-future changes. They intentionally omit phase history; use
-[archive/PROGRESS.md](archive/PROGRESS.md) only when the chronological handoff
-is needed.
+future changes. They intentionally omit implementation history.
 
 ## Configuration And Data
 

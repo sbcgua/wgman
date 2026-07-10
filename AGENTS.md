@@ -1,0 +1,3 @@
+- The project will be built and used under Linux. If agent runs in windows:
+  A) limit windows specific comments to any documentation (especially avoid paths with real username in it, use env variables e.g. `$USERPROFILE` instead)
+  B) highlight to the user, if there are things to double check under linux env, what might not work there for some reason.
