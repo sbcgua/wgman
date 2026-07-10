@@ -63,25 +63,27 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 		}
 	}
 
-	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, app.Sys)
-	if err != nil {
-		rollbackErr := ApplyDeltas(InvertDeltas(appliedDeltas), app.Sys)
-		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
-		return 1
-	}
-	if err := app.Sys.WGDelPeer(cfg.Interface, plan.Pub); err != nil {
-		rollbackErr := ApplyDeltas(InvertDeltas(appliedDeltas), app.Sys)
-		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
-		return 1
-	}
-	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		rollbackErr := rollbackRemoveLiveState(cfg.Interface, plan.Pub, plan.IP, appliedDeltas, app.Sys)
+	if err, rollbackErr := applyRemoveUserPlan(gf.configDir, cfg.Interface, plan, app.Sys); err != nil {
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
 
 	fmt.Fprintf(app.Stdout, "remove: removed %s\n", plan.User)
 	return 0
+}
+
+func applyRemoveUserPlan(configDir, iface string, plan *removePlan, sys SystemAdapter) (applyErr, rollbackErr error) {
+	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, sys)
+	if err != nil {
+		return err, ApplyDeltas(InvertDeltas(appliedDeltas), sys)
+	}
+	if err := sys.WGDelPeer(iface, plan.Pub); err != nil {
+		return err, ApplyDeltas(InvertDeltas(appliedDeltas), sys)
+	}
+	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
+		return err, rollbackRemoveLiveState(iface, plan.Pub, plan.IP, appliedDeltas, sys)
+	}
+	return nil, nil
 }
 
 func rollbackRemoveLiveState(iface, pubKey, ip string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
