@@ -112,8 +112,8 @@ version.
 - No args, `help`, `-h`, `--help`, and command-local help flags print the
   static Go-compatible help text and exit `0`.
 - Unknown commands and argument/usage errors exit `2`. `check`, `list`, and
-  `show` reject `--dry-run`; mutation commands remain intentionally
-  unsupported in this phase.
+  `show` reject `--dry-run`; `init-ipsets` also rejects `--dry-run`, while
+  `deploy` supports it.
 - `--config-dir`, `--yes`, `--dry-run`, `--no-color`, and create/add-only `-c`
   are parsed globally. Go-style single-dash long global flags and explicit
   boolean assignments such as `--dry-run=false` are accepted. `-c` on
@@ -133,6 +133,25 @@ version.
   back to DB users, strips endpoint ports, formats byte counters and handshake
   ages, appends inactive `~` suffixes, and colorizes selected values only on
   interactive stdout unless `--no-color` is set.
+
+## Init And Deploy Commands
+
+- `init-ipsets` enforces root, accepts no positional arguments, loads only
+  `config.yaml`, and creates the three configured managed sets through
+  `SystemAdapter::ipset_create`.
+- Managed set creation uses Go-compatible types and comment support:
+  `sets.all` is `hash:ip` without comments, `sets.ip_matrix` is
+  `hash:net,net` with comments, and `sets.port_matrix` is
+  `hash:ip,port,ip` with comments. The real adapter passes `-exist` so
+  repeated initialization is idempotent.
+- `deploy` enforces root, accepts no positional arguments, loads config/db,
+  runs the check engine, and refuses to proceed when hard errors are present.
+- `deploy` treats `db.yaml` as intended state when there are no hard errors:
+  it reports planned ipset deltas and WireGuard peer deltas, supports
+  `--dry-run`, prompts with `Apply these changes? [y/N] ` unless `--yes` is
+  set, and applies live changes only through `apply_state_deltas`.
+- The CLI has a `run_with_input` test seam so prompt-driven commands read from
+  an injected buffered input stream. `main_entry` wires this to real stdin.
 
 ## Deploy And Rollback
 

@@ -29,6 +29,7 @@ the current state without relying on chat history.
 - Phase 4 implementation completed, reviewed, and verified.
 - Phase 5 implementation completed, reviewed, verified, and committed.
 - Phase 6 implementation completed, reviewed, and verified.
+- Phase 7 implementation completed, reviewed, and verified.
 
 ## Decisions Captured
 
@@ -263,3 +264,40 @@ the current state without relying on chat history.
   - `make check`
 - After the Phase 6 commit, pause before starting Phase 7 until the user
   confirms continuation.
+
+### Phase 7: Init And Deploy Commands
+
+- Implemented `init-ipsets` under `src/commands/init_ipsets.rs`. It enforces
+  root/no positional args, loads `config.yaml`, creates all three configured
+  managed sets with Go-compatible types/comment support, and reports
+  `init-ipsets: OK`.
+- Extended `SystemAdapter`, `RealSystemAdapter`, and the test fake with
+  `ipset_create`. The real adapter uses `ipset create ... family inet -exist`
+  and enables comments for the two matrix sets.
+- Implemented `deploy` under `src/commands/deploy.rs`. It enforces root/no
+  positional args, loads config/db, runs `check`, refuses hard errors, reports
+  planned peer/ipset changes, supports `--dry-run`, prompts unless `--yes`,
+  and applies changes only through `apply_state_deltas`.
+- Added `print_peer_deltas` and wired CLI dispatch to `init-ipsets` and
+  `deploy`; create/add/remove/mod remain unsupported for Phase 8.
+- Added `run_with_input` to the CLI app so confirmation prompts can read from
+  injected input in tests and from stdin in the real binary.
+- Added `tests/phase7.rs` covering Go-parity init/deploy behavior, dry-run,
+  confirmation abort, `--yes`, peer add ordering, inactive cleanup ordering,
+  and apply failures.
+- Local acceptance checks passed:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- High-reasoning review agent `Bacon` found no Phase 7 issues. Residual risk:
+  real `wg`/`ipset` mutation paths are covered by code review and fake-system
+  tests but not exercised against real Linux tools in this environment.
+- After review, additional regression coverage was added for prompt-confirmed
+  deploy and deleting unexpected ipset entries without peer drift.
+- Acceptance checks passed after the added coverage:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- Next step after commit: start Phase 8 with a medium-reasoning worker agent.

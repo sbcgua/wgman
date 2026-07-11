@@ -11,6 +11,7 @@ pub struct FakeSystem {
     pub wg_dump_error: Option<String>,
     pub ipset_results: std::collections::HashMap<String, String>,
     pub ipset_errors: std::collections::HashMap<String, String>,
+    pub ipset_create_error: Option<String>,
     pub ipset_add_error: Option<String>,
     pub ipset_del_error: Option<String>,
     pub ipset_del_errors: std::collections::HashMap<String, String>,
@@ -55,6 +56,22 @@ impl SystemAdapter for FakeSystem {
                 .cloned()
                 .unwrap_or_default()),
         }
+    }
+
+    fn ipset_create(
+        &self,
+        set_name: &str,
+        set_type: &str,
+        with_comment: bool,
+    ) -> Result<(), String> {
+        if let Some(err) = &self.ipset_create_error {
+            return Err(err.clone());
+        }
+        let comment = if with_comment { "comment" } else { "nocomment" };
+        self.applied_ops
+            .borrow_mut()
+            .push(format!("create:{set_name}:{set_type}:{comment}"));
+        Ok(())
     }
 
     fn ipset_add(&self, set_name: &str, entry: &str, comment: &str) -> Result<(), String> {

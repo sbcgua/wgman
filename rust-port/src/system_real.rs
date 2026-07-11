@@ -61,6 +61,19 @@ impl SystemAdapter for RealSystemAdapter {
         command_stdout("ipset", &["list", set_name, "-o", "save"])
     }
 
+    fn ipset_create(
+        &self,
+        set_name: &str,
+        set_type: &str,
+        with_comment: bool,
+    ) -> Result<(), String> {
+        let mut args = vec!["create", set_name, set_type, "family", "inet", "-exist"];
+        if with_comment {
+            args.push("comment");
+        }
+        command_ok("ipset", &args)
+    }
+
     fn ipset_add(&self, set_name: &str, entry: &str, comment: &str) -> Result<(), String> {
         let mut args = vec!["add", set_name, entry];
         if !comment.is_empty() {

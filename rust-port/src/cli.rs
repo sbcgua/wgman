@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 use std::time::SystemTime;
 
@@ -60,6 +60,23 @@ where
         W: Write,
         E: Write,
     {
+        let mut stdin = io::BufReader::new(io::empty());
+        self.run_with_input(args, &mut stdin, stdout, stderr)
+    }
+
+    pub fn run_with_input<I, R, W, E>(
+        &self,
+        args: I,
+        stdin: &mut R,
+        stdout: &mut W,
+        stderr: &mut E,
+    ) -> i32
+    where
+        I: IntoIterator<Item = OsString>,
+        R: BufRead,
+        W: Write,
+        E: Write,
+    {
         let args: Vec<String> = args
             .into_iter()
             .skip(1)
@@ -89,9 +106,22 @@ where
             {
                 2
             }
-            "init-ipsets" | "deploy" | "create" | "add" | "remove" | "mod" => {
-                unsupported_command(command, stderr)
-            }
+            "init-ipsets" => commands::init_ipsets::cmd_init_ipsets(
+                &parsed.flags,
+                &parsed.args,
+                self,
+                stdout,
+                stderr,
+            ),
+            "deploy" => commands::deploy::cmd_deploy(
+                &parsed.flags,
+                &parsed.args,
+                self,
+                stdin,
+                stdout,
+                stderr,
+            ),
+            "create" | "add" | "remove" | "mod" => unsupported_command(command, stderr),
             other => {
                 let _ = writeln!(
                     stderr,
@@ -104,6 +134,10 @@ where
 
     pub fn system(&self) -> &S {
         &self.system
+    }
+
+    pub fn into_system(self) -> S {
+        self.system
     }
 
     pub fn stdout_color_enabled(&self, no_color: bool) -> bool {
@@ -352,6 +386,12 @@ where
     I: IntoIterator<Item = OsString>,
 {
     let app = App::new(RealSystemAdapter);
-    let code = app.run(args, &mut io::stdout().lock(), &mut io::stderr().lock());
+    let mut stdin = io::stdin().lock();
+    let code = app.run_with_input(
+        args,
+        &mut stdin,
+        &mut io::stdout().lock(),
+        &mut io::stderr().lock(),
+    );
     ExitCode::from(code as u8)
 }

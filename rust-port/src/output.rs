@@ -3,7 +3,7 @@ use std::io::Write;
 use crate::format::{
     color_green, color_grey, color_light_blue, color_red, color_yellow, TableCell,
 };
-use crate::model::{CheckResult, IPSetDelta, ResourcePorts, DB};
+use crate::model::{CheckResult, IPSetDelta, ResourcePorts, WGPeerDelta, DB};
 use crate::model::{ResourceProtocol, WGPeerDeltaAction};
 use crate::utils::sorted_keys;
 
@@ -59,6 +59,23 @@ pub fn print_ipset_deltas<W: Write>(deltas: &[IPSetDelta], writer: &mut W) {
             }
         } else {
             let _ = writeln!(writer, "  del {} {}", delta.set, delta.entry);
+        }
+    }
+}
+
+pub fn print_peer_deltas<W: Write>(deltas: &[WGPeerDelta], writer: &mut W) {
+    for delta in deltas {
+        match delta.action {
+            WGPeerDeltaAction::Add => {
+                let _ = writeln!(
+                    writer,
+                    "  add wg peer {} {} {}",
+                    delta.user, delta.pub_key, delta.allowed_ip
+                );
+            }
+            WGPeerDeltaAction::Remove => {
+                let _ = writeln!(writer, "  remove wg peer {} {}", delta.user, delta.pub_key);
+            }
         }
     }
 }
