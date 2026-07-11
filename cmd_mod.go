@@ -160,15 +160,15 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 		return 0
 	}
 
-	appliedDeltas, liveErr := applyModToggleLive(cfg.Interface, plan, app.Sys)
+	appliedDeltas, liveErr := ApplyStateDeltasTracked(cfg.Interface, plan.IPSetDeltas, plan.PeerDeltas, app.Sys)
 	if liveErr != nil {
-		rollbackErr := rollbackModToggleLive(cfg.Interface, appliedDeltas, app.Sys)
+		rollbackErr := RollbackStateDeltas(cfg.Interface, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, liveErr, rollbackErr)
 		return 1
 	}
 
 	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		rollbackErr := rollbackModToggleLive(cfg.Interface, appliedDeltas, app.Sys)
+		rollbackErr := RollbackStateDeltas(cfg.Interface, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
@@ -227,14 +227,6 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}}
 	}
 	return plan, nil
-}
-
-func applyModToggleLive(iface string, plan *modTogglePlan, sys SystemAdapter) (AppliedStateDeltas, error) {
-	return ApplyStateDeltasTracked(iface, plan.IPSetDeltas, plan.PeerDeltas, sys)
-}
-
-func rollbackModToggleLive(iface string, applied AppliedStateDeltas, sys SystemAdapter) error {
-	return RollbackStateDeltas(iface, applied, sys)
 }
 
 func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAccessPlan, error) {
