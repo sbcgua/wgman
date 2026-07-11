@@ -40,7 +40,7 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	changeCount := len(result.Deltas) + len(result.PeerDeltas)
+	changeCount := len(result.IPSetDeltas) + len(result.PeerDeltas)
 	if changeCount == 0 {
 		fmt.Fprintln(app.Stdout, "deploy: no changes needed")
 		return 0
@@ -48,7 +48,7 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 
 	// Report planned changes.
 	fmt.Fprintf(app.Stdout, "deploy: planned changes (%d):\n", changeCount)
-	printDeltas(result.Deltas, app.Stdout)
+	printDeltas(result.IPSetDeltas, app.Stdout)
 	printPeerDeltas(result.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {
@@ -63,7 +63,7 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 		}
 	}
 
-	if err := ApplyStateDeltas(cfg.Interface, result.Deltas, result.PeerDeltas, app.Sys); err != nil {
+	if err := ApplyStateDeltas(cfg.Interface, result.IPSetDeltas, result.PeerDeltas, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}

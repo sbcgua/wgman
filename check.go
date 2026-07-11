@@ -157,11 +157,11 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 
 	sort.Strings(result.HardErrors)
 	sort.Strings(result.Drift)
-	sort.Slice(result.Deltas, func(i, j int) bool {
-		if result.Deltas[i].Set != result.Deltas[j].Set {
-			return result.Deltas[i].Set < result.Deltas[j].Set
+	sort.Slice(result.IPSetDeltas, func(i, j int) bool {
+		if result.IPSetDeltas[i].Set != result.IPSetDeltas[j].Set {
+			return result.IPSetDeltas[i].Set < result.IPSetDeltas[j].Set
 		}
-		return result.Deltas[i].Entry < result.Deltas[j].Entry
+		return result.IPSetDeltas[i].Entry < result.IPSetDeltas[j].Entry
 	})
 	sort.Slice(result.PeerDeltas, func(i, j int) bool {
 		if result.PeerDeltas[i].User != result.PeerDeltas[j].User {
@@ -215,7 +215,7 @@ func reconcileIPSet(setname string, expected map[string]string, live []IPSetEntr
 		if !liveSet[entry] {
 			result.Drift = append(result.Drift,
 				fmt.Sprintf("ipset %s: missing entry %s", setname, entry))
-			result.Deltas = append(result.Deltas, IpsetDeltaOp{
+			result.IPSetDeltas = append(result.IPSetDeltas, IpsetDeltaOp{
 				Set:     setname,
 				Entry:   entry,
 				Comment: comment,
@@ -229,7 +229,7 @@ func reconcileIPSet(setname string, expected map[string]string, live []IPSetEntr
 		if _, ok := expected[e.Entry]; !ok {
 			result.Drift = append(result.Drift,
 				fmt.Sprintf("ipset %s: unexpected entry %s", setname, e.Entry))
-			result.Deltas = append(result.Deltas, IpsetDeltaOp{
+			result.IPSetDeltas = append(result.IPSetDeltas, IpsetDeltaOp{
 				Set:   setname,
 				Entry: e.Entry,
 				Add:   false,

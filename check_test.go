@@ -85,8 +85,8 @@ func TestCheck_CleanState(t *testing.T) {
 	if len(result.Drift) != 0 {
 		t.Errorf("expected no drift, got: %v", result.Drift)
 	}
-	if len(result.Deltas) != 0 {
-		t.Errorf("expected no deltas, got: %v", result.Deltas)
+	if len(result.IPSetDeltas) != 0 {
+		t.Errorf("expected no deltas, got: %v", result.IPSetDeltas)
 	}
 	if !result.OK() {
 		t.Error("expected OK()")
@@ -104,8 +104,8 @@ func TestCheck_InactiveUserAbsentFromWGAndIPSetsIsClean(t *testing.T) {
 	if len(result.Drift) != 0 {
 		t.Errorf("expected no ipset drift, got: %v", result.Drift)
 	}
-	if len(result.Deltas) != 0 {
-		t.Errorf("expected no ipset deltas, got: %v", result.Deltas)
+	if len(result.IPSetDeltas) != 0 {
+		t.Errorf("expected no ipset deltas, got: %v", result.IPSetDeltas)
 	}
 	if !result.OK() {
 		t.Error("expected OK()")
@@ -159,14 +159,14 @@ func TestCheck_InactiveUserIPSetEntriesProduceDeleteDeltas(t *testing.T) {
 		"10.8.0.15,192.168.122.100": false,
 		"10.8.0.15,192.168.122.101": false,
 	}
-	for _, d := range result.Deltas {
+	for _, d := range result.IPSetDeltas {
 		if _, ok := want[d.Entry]; ok && !d.Add {
 			want[d.Entry] = true
 		}
 	}
 	for entry, found := range want {
 		if !found {
-			t.Errorf("missing delete delta for %s from %+v", entry, result.Deltas)
+			t.Errorf("missing delete delta for %s from %+v", entry, result.IPSetDeltas)
 		}
 	}
 }
@@ -265,7 +265,7 @@ func TestCheck_MissingIPSetEntry(t *testing.T) {
 	}
 	// Expect an add delta for the missing entry.
 	found := false
-	for _, d := range result.Deltas {
+	for _, d := range result.IPSetDeltas {
 		if d.Add && d.Entry == "10.8.0.10,192.168.122.100" {
 			found = true
 			if d.Comment != "alice -> sandbox" {
@@ -274,7 +274,7 @@ func TestCheck_MissingIPSetEntry(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected add delta for 10.8.0.10,192.168.122.100, deltas: %v", result.Deltas)
+		t.Errorf("expected add delta for 10.8.0.10,192.168.122.100, deltas: %v", result.IPSetDeltas)
 	}
 }
 
@@ -295,13 +295,13 @@ func TestCheck_ExtraIPSetEntry(t *testing.T) {
 	}
 	// Expect a delete delta.
 	found := false
-	for _, d := range result.Deltas {
+	for _, d := range result.IPSetDeltas {
 		if !d.Add && d.Entry == "10.8.0.99" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected delete delta for 10.8.0.99, deltas: %v", result.Deltas)
+		t.Errorf("expected delete delta for 10.8.0.99, deltas: %v", result.IPSetDeltas)
 	}
 }
 

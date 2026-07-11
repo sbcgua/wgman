@@ -62,8 +62,8 @@ future changes. They intentionally omit implementation history.
   active users missing from WireGuard are addable drift.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
-- `CheckResult.HardErrors`, `Drift`, and `Deltas` are sorted before return for
-  stable output and assertions.
+- `CheckResult.HardErrors`, `Drift`, `IPSetDeltas`, and `PeerDeltas` are
+  sorted before return for stable output and assertions.
 - `CheckResult.WGDump` is populated after a successful WireGuard dump parse and
   can be nil if checking stops early.
 
