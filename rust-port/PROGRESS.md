@@ -261,4 +261,5 @@ the current state without relying on chat history.
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `make check`
-- Next step after commit: start Phase 7 with a medium-reasoning worker agent.
+- After the Phase 6 commit, pause before starting Phase 7 until the user
+  confirms continuation.
