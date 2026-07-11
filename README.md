@@ -151,6 +151,12 @@ The script manages only its dedicated `iptables` chains and parent jump rules. I
 sudo /usr/local/sbin/wgman-firewall-hook reassert
 ```
 
+To inspect the effective hook variables after reading `config.yaml`:
+
+```sh
+/usr/local/sbin/wgman-firewall-hook print
+```
+
 The template is IPv4-only and uses `iptables`/`ipset`. Hosts using nftables or IPv6 should adapt the template manually.
 
 ## Basic Commands

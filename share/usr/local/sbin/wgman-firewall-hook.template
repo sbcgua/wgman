@@ -21,11 +21,13 @@ CHAIN_FWD="WGMAN_FWD"
 usage() {
   cat <<EOF
 Usage: $(basename "$0") up|down|reassert
+       $(basename "$0") print
 
 Actions:
   up        rebuild owned chains and insert parent jumps at the top
   down      remove parent jumps and delete owned chains
   reassert  move existing parent jumps back to the top
+  print     print effective template variables after reading config.yaml
 EOF
 }
 
@@ -127,6 +129,11 @@ require_executable() {
   if [[ ! -x "$path" ]]; then
     die "$label not found or not executable at $path; edit the command path in this script"
   fi
+}
+
+print_var() {
+  local name="$1"
+  printf "%s=%q\n" "$name" "${!name:-}"
 }
 
 require_common_config() {
@@ -263,6 +270,21 @@ action_reassert() {
   echo "reasserted wgman firewall jumps"
 }
 
+action_print() {
+  load_wgman_config
+
+  print_var CONFIG_FILE
+  print_var IPTABLES
+  print_var IPSET
+  print_var WG_IFACE
+  print_var VM_IFACE
+  print_var SET_ALL
+  print_var SET_IP_MATRIX
+  print_var SET_PORT_MATRIX
+  print_var CHAIN_INP
+  print_var CHAIN_FWD
+}
+
 if [[ $# -ne 1 ]]; then
   usage >&2
   exit 2
@@ -277,6 +299,9 @@ case "$1" in
     ;;
   reassert)
     action_reassert
+    ;;
+  print)
+    action_print
     ;;
   -h|--help|help)
     usage
