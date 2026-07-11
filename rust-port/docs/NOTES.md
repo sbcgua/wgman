@@ -24,6 +24,11 @@ version.
 - All external system interaction goes through a fakeable system trait.
 - Core engines must be testable without root, WireGuard, ipset, iptables, or a
   real Linux network interface.
+- The CLI dependency-injection boundary is `App<S: SystemAdapter>`.
+- `main.rs` should stay minimal: construct `RealSystemAdapter`, delegate to
+  `cli`, and return the resulting exit code.
+- Phase-owned command handlers live under `src/commands/`, while durable
+  behavior belongs in the corresponding engine modules.
 
 ## Compatibility
 
@@ -41,6 +46,8 @@ version.
 - Prefer explicit user-visible output formatting over crate defaults when crate
   defaults differ from the Go CLI behavior.
 - Execute external commands with argument arrays, never shell command strings.
+- Phase 1 intentionally has no external crate dependencies. Add crates only
+  when a later phase has a concrete need.
 
 ## Tests
 
@@ -48,6 +55,8 @@ version.
 - Use fake system adapters and temporary config directories.
 - Use the Go tests as the parity checklist, especially for parser edge cases,
   validation policy, drift separation, rollback behavior, and command output.
+- Smoke tests cover only initial CLI scaffolding: no args, `help`, help flags,
+  and unsupported-command usage errors.
 
 ## Linux Target
 

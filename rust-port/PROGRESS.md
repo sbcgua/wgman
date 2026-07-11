@@ -21,7 +21,9 @@ the current state without relying on chat history.
 - Planning interview completed.
 - Port plan created at `rust-port/PLAN.md`.
 - Rust-specific notes created at `rust-port/docs/NOTES.md`.
-- No Rust implementation has started yet.
+- Phase 1 implementation completed: Rust Cargo skeleton, Makefile, module
+  layout, `wgman-rs` binary target, initial `App`/`SystemAdapter` shape, fake
+  test support, and smoke tests are in place.
 
 ## Decisions Captured
 
@@ -42,3 +44,18 @@ the current state without relying on chat history.
 - Created planning artifacts under `rust-port/`.
 - Next step: commit the baseline, then start Phase 1 with a medium-reasoning
   worker agent.
+
+### Phase 1: Rust Skeleton And Project Conventions
+
+- Added `Cargo.toml`, `Cargo.lock`, `Makefile`, `src/main.rs`, `src/lib.rs`,
+  module placeholder files, and command module placeholders under
+  `rust-port/`.
+- Configured the binary target as `wgman-rs`.
+- Added `SystemAdapter` with `RealSystemAdapter` plus an `App<S>` CLI
+  dependency-injection boundary.
+- Implemented smoke-only CLI behavior for no args, `help`, `-h`, `--help`, and
+  unsupported commands.
+- Added integration smoke tests using a local fake system adapter.
+- Updated Rust notes with Phase 1 conventions.
+- Acceptance checks passed: `cargo test`, `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, and `make check`.
