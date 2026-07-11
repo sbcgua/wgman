@@ -1,11 +1,16 @@
 package main
 
+import "io"
+
 // SystemAdapter abstracts all external command execution and OS interactions.
 // Real implementations call wg, ipset, and ip commands.
 // Fake implementations are used in tests.
 type SystemAdapter interface {
 	// IsRoot returns true when the process is running as root (uid 0).
 	IsRoot() bool
+
+	// IsTerminal reports whether w is connected to a terminal.
+	IsTerminal(w io.Writer) bool
 
 	// InterfaceSubnet returns the CIDR subnet of the given network interface,
 	// e.g. "10.8.0.0/24".

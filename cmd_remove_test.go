@@ -24,10 +24,10 @@ func TestPlanRemoveUser(t *testing.T) {
 	if strings.Join(plan.Access, ",") != "mailvm,sandbox" {
 		t.Errorf("plan access = %v, want sorted mailvm,sandbox", plan.Access)
 	}
-	if len(plan.Deltas) != 2 {
-		t.Fatalf("len(deltas) = %d, want 2: %+v", len(plan.Deltas), plan.Deltas)
+	if len(plan.IPSetDeltas) != 2 {
+		t.Fatalf("len(ipset deltas) = %d, want 2: %+v", len(plan.IPSetDeltas), plan.IPSetDeltas)
 	}
-	for _, delta := range plan.Deltas {
+	for _, delta := range plan.IPSetDeltas {
 		if delta.Add {
 			t.Errorf("remove delta should delete, got add: %+v", delta)
 		}
@@ -37,7 +37,7 @@ func TestPlanRemoveUser(t *testing.T) {
 func TestRemove_MissingUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"nobody"}, app)
@@ -52,7 +52,7 @@ func TestRemove_MissingUser(t *testing.T) {
 func TestRemove_RejectsPreExistingDrift(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildDriftFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"alice"}, app)
@@ -67,7 +67,7 @@ func TestRemove_RejectsPreExistingDrift(t *testing.T) {
 func TestRemove_DryRunDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -96,7 +96,7 @@ func TestRemove_DryRunDoesNotWriteOrApply(t *testing.T) {
 func TestRemove_ConfirmationRejectedPreventsWriteAndApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -125,7 +125,7 @@ func TestRemove_ConfirmationRejectedPreventsWriteAndApply(t *testing.T) {
 func TestRemove_YesAppliesWithoutPrompt(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"alice"}, app)
@@ -143,7 +143,7 @@ func TestRemove_YesAppliesWithoutPrompt(t *testing.T) {
 func TestRemove_WritesDBAndAppliesSystemOps(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, _ := makeDeployApp(sys, "y\n")
 	code := cmdRemove(&globalFlags{configDir: dir}, []string{"bob"}, app)
@@ -183,7 +183,7 @@ func TestRemove_WritesDBAndAppliesSystemOps(t *testing.T) {
 func TestRemove_WGDelFailureRollsBackIPSetsAndDoesNotWriteDB(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -224,10 +224,57 @@ func TestRemove_WGDelFailureRollsBackIPSetsAndDoesNotWriteDB(t *testing.T) {
 	}
 }
 
+func TestRemove_IPSetPartialFailureRollsBackAppliedDeltas(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeValidTestData(h, dir)
+	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db before: %v", err)
+	}
+	sys := buildCleanFakeSystem()
+	sys.ipsetDelErrs = map[string]error{
+		"wg_allow_matrix:10.8.0.15,192.168.122.101": os.ErrPermission,
+	}
+	app, _, stderr := makeDeployApp(sys, "y\n")
+	code := cmdRemove(&globalFlags{configDir: dir}, []string{"bob"}, app)
+	if code == 0 {
+		t.Fatal("remove should fail when an ipset delete fails")
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("db.yaml changed after ipset delete failure")
+	}
+	wantOps := []string{
+		"del:wg_allow_matrix:10.8.0.15,192.168.122.100",
+		"add:wg_allow_matrix:10.8.0.15,192.168.122.100:bob -> sandbox",
+	}
+	for _, want := range wantOps {
+		found := false
+		for _, op := range sys.appliedOps {
+			if op == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing rollback op %q from %v", want, sys.appliedOps)
+		}
+	}
+	if strings.Contains(strings.Join(sys.appliedOps, "\n"), "wgdel:wg0:BOB_PUB=") {
+		t.Errorf("WireGuard peer should not be deleted after ipset failure, got: %v", sys.appliedOps)
+	}
+	if !strings.Contains(stderr.String(), "permission") {
+		t.Errorf("expected permission error, got: %s", stderr.String())
+	}
+}
+
 func TestRemove_SaveDBFailureRollsBackLiveState(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -279,7 +326,7 @@ func TestRemove_SaveDBFailureRollsBackLiveState(t *testing.T) {
 func TestRemove_AdminDeletesAllAccessSetEntry(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, _ := makeDeployApp(sys, "")
 	code := cmdRemove(&globalFlags{configDir: dir, yes: true}, []string{"admin"}, app)

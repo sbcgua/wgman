@@ -1,21 +1,19 @@
 package main
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 )
 
 type removePlan struct {
-	UpdatedDB *DB
-	Deltas    []IpsetDeltaOp
-	User      string
-	IP        string
-	Pub       string
-	Access    []string
+	UpdatedDB   *DB
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	User        string
+	IP          string
+	Pub         string
+	Access      []string
 }
 
 func cmdRemove(gf *globalFlags, args []string, app *App) int {
@@ -59,30 +57,13 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 	}
 
 	if !gf.yes {
-		fmt.Fprint(app.Stdout, "Remove this user? [y/N] ")
-		scanner := bufio.NewScanner(app.Stdin)
-		answer := ""
-		if scanner.Scan() {
-			answer = strings.TrimSpace(scanner.Text())
-		}
-		if answer != "y" && answer != "Y" {
+		if !confirmAction(app.Stdin, app.Stdout, "Remove this user? [y/N] ") {
 			fmt.Fprintln(app.Stdout, "remove: aborted")
 			return 0
 		}
 	}
 
-	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, app.Sys)
-	if err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-	if err := app.Sys.WGDelPeer(cfg.Interface, plan.Pub); err != nil {
-		rollbackErr := ApplyDeltas(InvertDeltas(appliedDeltas), app.Sys)
-		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
-		return 1
-	}
-	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		rollbackErr := rollbackRemoveLiveState(cfg.Interface, plan.Pub, plan.IP, appliedDeltas, app.Sys)
+	if err, rollbackErr := applyRemoveUserPlan(gf.configDir, cfg.Interface, plan, app.Sys); err != nil {
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
@@ -91,18 +72,15 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 	return 0
 }
 
-func rollbackRemoveLiveState(iface, pubKey, ip string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
-	var errs []string
-	if err := sys.WGSetPeer(iface, pubKey, ip); err != nil {
-		errs = append(errs, err.Error())
+func applyRemoveUserPlan(configDir, iface string, plan *removePlan, sys SystemAdapter) (applyErr, rollbackErr error) {
+	applied, err := ApplyStateDeltasTracked(iface, plan.IPSetDeltas, plan.PeerDeltas, sys)
+	if err != nil {
+		return err, RollbackStateDeltas(iface, applied, sys)
 	}
-	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
-		errs = append(errs, err.Error())
+	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
+		return err, RollbackStateDeltas(iface, applied, sys)
 	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
+	return nil, nil
 }
 
 func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
@@ -118,8 +96,8 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	delete(updated.Users, user)
 	delete(updated.Access, user)
 	normalizeDBAccess(updated)
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
@@ -129,24 +107,12 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	access := append([]string(nil), db.Access[user]...)
 	sort.Strings(access)
 	return &removePlan{
-		UpdatedDB: updated,
-		Deltas:    deltas,
-		User:      user,
-		IP:        entry.IP,
-		Pub:       entry.Pub,
-		Access:    access,
+		UpdatedDB:   updated,
+		IPSetDeltas: deltas,
+		PeerDeltas:  []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}},
+		User:        user,
+		IP:          entry.IP,
+		Pub:         entry.Pub,
+		Access:      access,
 	}, nil
-}
-
-func printRemovePlan(plan *removePlan, w io.Writer) {
-	fmt.Fprintf(w, "remove: planned removal of %s (%s)\n", plan.User, plan.IP)
-	if len(plan.Access) == 0 {
-		fmt.Fprintln(w, "remove: access: (none)")
-	} else {
-		fmt.Fprintf(w, "remove: access: %s\n", strings.Join(plan.Access, ", "))
-	}
-	if len(plan.Deltas) > 0 {
-		fmt.Fprintf(w, "remove: planned access changes (%d):\n", len(plan.Deltas))
-		printDeltas(plan.Deltas, w)
-	}
 }

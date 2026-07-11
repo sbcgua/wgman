@@ -116,15 +116,3 @@ func normalizeWGAllowedIP(s string) (string, error) {
 	}
 	return s, nil
 }
-
-// splitLines splits output into non-empty lines, stripping CR.
-func splitLines(s string) []string {
-	var lines []string
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	return lines
-}

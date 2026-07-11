@@ -8,7 +8,7 @@ import (
 )
 
 func writeCreateTestData(h *testHelper, dir string) {
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	h.writeFile(dir, "user.conf.template", `[Interface]
 PrivateKey = $CLIENT_PRIVATE_KEY
 Address = $CLIENT_VPN_IP/32
@@ -22,6 +22,8 @@ func TestParseCreateArgs(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        []string
+		comment     string
+		commentSet  bool
 		wantName    string
 		wantIP      string
 		wantAccess  string
@@ -34,10 +36,11 @@ func TestParseCreateArgs(t *testing.T) {
 		{name: "ip and access", args: []string{"carol", "10.8.0.20", "sandbox"}, wantName: "carol", wantIP: "10.8.0.20", wantAccess: "sandbox"},
 		{name: "comment before name", args: []string{"-c", " laptop replacement ", "carol"}, wantName: "carol", wantComment: "laptop replacement"},
 		{name: "comment after name", args: []string{"carol", "-c=temporary contractor"}, wantName: "carol", wantComment: "temporary contractor"},
+		{name: "global comment", args: []string{"carol"}, comment: "manual approval", commentSet: true, wantName: "carol", wantComment: "manual approval"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseCreateArgs(tc.args)
+			got, err := parseCreateArgs(tc.args, tc.comment, tc.commentSet)
 			if err != nil {
 				t.Fatalf("parseCreateArgs: %v", err)
 			}
@@ -67,7 +70,7 @@ func TestParseCreateArgs_Invalid(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := parseCreateArgs(tc.args); err == nil {
+			if _, err := parseCreateArgs(tc.args, "", false); err == nil {
 				t.Fatal("expected parse error")
 			}
 		})
@@ -93,24 +96,32 @@ func TestAllocateNextUserIP_NoUsableAddresses(t *testing.T) {
 
 func TestPlanCreateUser_SuppliedIPAndAccess(t *testing.T) {
 	args := &createArgs{Name: "carol", IP: "10.8.0.20", Access: []string{"mailvm"}, Comment: "temporary contractor"}
-	updated, deltas, clientIP, err := planCreateUser(makeTestCfg(), makeTestDB(), args, "CAROL_PUB=", "10.8.0.1/24")
+	sys := newFakeSystem()
+	sys.subnetResult = "10.8.0.1/24"
+	sys.genKeyResult = "CAROL_PRIV"
+	sys.pubKeyResult = "CAROL_PUB="
+
+	plan, err := planCreateUser(makeTestCfg(), makeTestDB(), args, sys)
 	if err != nil {
 		t.Fatalf("planCreateUser: %v", err)
 	}
-	if clientIP != "10.8.0.20" {
-		t.Errorf("clientIP = %q, want 10.8.0.20", clientIP)
+	if plan.ClientIP != "10.8.0.20" {
+		t.Errorf("clientIP = %q, want 10.8.0.20", plan.ClientIP)
 	}
-	if updated.Users["carol"].Pub != "CAROL_PUB=" {
+	if plan.PrivateKey != "CAROL_PRIV" || plan.PubKey != "CAROL_PUB=" {
+		t.Errorf("generated plan values = priv %q pub %q", plan.PrivateKey, plan.PubKey)
+	}
+	if plan.UpdatedDB.Users["carol"].Pub != "CAROL_PUB=" {
 		t.Errorf("carol pub not saved")
 	}
-	if updated.Users["carol"].Comment != "temporary contractor" {
-		t.Errorf("carol comment = %q, want temporary contractor", updated.Users["carol"].Comment)
+	if plan.UpdatedDB.Users["carol"].Comment != "temporary contractor" {
+		t.Errorf("carol comment = %q, want temporary contractor", plan.UpdatedDB.Users["carol"].Comment)
 	}
-	if strings.Join(updated.Access["carol"], ",") != "mailvm" {
-		t.Errorf("carol access = %v, want mailvm", updated.Access["carol"])
+	if strings.Join(plan.UpdatedDB.Access["carol"], ",") != "mailvm" {
+		t.Errorf("carol access = %v, want mailvm", plan.UpdatedDB.Access["carol"])
 	}
-	if len(deltas) != 1 || !deltas[0].Add || deltas[0].Entry != "10.8.0.20,192.168.122.101" {
-		t.Errorf("deltas = %+v, want one mailvm add", deltas)
+	if len(plan.IPSetDeltas) != 1 || !plan.IPSetDeltas[0].Add || plan.IPSetDeltas[0].Entry != "10.8.0.20,192.168.122.101" {
+		t.Errorf("ipset deltas = %+v, want one mailvm add", plan.IPSetDeltas)
 	}
 }
 
@@ -125,7 +136,7 @@ func TestPlanCreateUser_RejectsDuplicateAndCaseConflict(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, err := planCreateUser(makeTestCfg(), makeTestDB(), &createArgs{Name: tc.user}, "PUB=", "10.8.0.1/24")
+			_, err := planCreateUser(makeTestCfg(), makeTestDB(), &createArgs{Name: tc.user}, newFakeSystem())
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want containing %q", err, tc.want)
 			}
@@ -134,7 +145,10 @@ func TestPlanCreateUser_RejectsDuplicateAndCaseConflict(t *testing.T) {
 }
 
 func TestPlanCreateUser_RejectsUnknownVM(t *testing.T) {
-	_, _, _, err := planCreateUser(makeTestCfg(), makeTestDB(), &createArgs{Name: "carol", Access: []string{"unknown"}}, "PUB=", "10.8.0.1/24")
+	sys := newFakeSystem()
+	sys.subnetResult = "10.8.0.1/24"
+	sys.pubKeyResult = "PUB="
+	_, err := planCreateUser(makeTestCfg(), makeTestDB(), &createArgs{Name: "carol", Access: []string{"unknown"}}, sys)
 	if err == nil || !strings.Contains(err.Error(), "unknown vm") {
 		t.Fatalf("error = %v, want unknown vm", err)
 	}
@@ -153,25 +167,14 @@ func TestPlanCreateUser_RejectsIPAndPubConflicts(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, err := planCreateUser(makeTestCfg(), makeTestDB(), tc.args, tc.pubKey, "10.8.0.1/24")
+			sys := newFakeSystem()
+			sys.subnetResult = "10.8.0.1/24"
+			sys.pubKeyResult = tc.pubKey
+			_, err := planCreateUser(makeTestCfg(), makeTestDB(), tc.args, sys)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want containing %q", err, tc.want)
 			}
 		})
-	}
-}
-
-func TestRenderClientConfig(t *testing.T) {
-	h := newHelper(t)
-	dir := h.makeTempDir()
-	h.writeFile(dir, "user.conf.template", "# generated by template\n  # local note\n\npriv=$CLIENT_PRIVATE_KEY\n\nip=$CLIENT_VPN_IP\nserver=$SERVER_PUBLIC_KEY\n")
-	got, err := renderClientConfig(filepath.Join(dir, "user.conf.template"), "PRIV", "10.8.0.20", "SERVER")
-	if err != nil {
-		t.Fatalf("renderClientConfig: %v", err)
-	}
-	want := "priv=PRIV\n\nip=10.8.0.20\nserver=SERVER\n"
-	if got != want {
-		t.Errorf("rendered config = %q, want %q", got, want)
 	}
 }
 
@@ -290,14 +293,10 @@ func TestCreate_WGSetFailureRemovesConfigAndDoesNotWriteDB(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "carol.vpn.conf")); !os.IsNotExist(err) {
 		t.Fatalf("generated config should be removed after WGSetPeer failure, stat err: %v", err)
 	}
-	foundRollback := false
 	for _, op := range sys.appliedOps {
-		if op == "wgdel:wg0:CAROL_PUBLIC=" {
-			foundRollback = true
+		if strings.HasPrefix(op, "wgdel:") {
+			t.Errorf("failed peer add should not be rolled back as completed state, got: %v", sys.appliedOps)
 		}
-	}
-	if !foundRollback {
-		t.Errorf("expected rollback WGDelPeer after WGSetPeer failure, got: %v", sys.appliedOps)
 	}
 	if !strings.Contains(stderr.String(), "permission") {
 		t.Errorf("expected permission error, got: %s", stderr.String())

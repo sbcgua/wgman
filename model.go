@@ -35,27 +35,34 @@ type IpsetDeltaOp struct {
 	Add     bool   // true = add, false = delete
 }
 
+// WGPeerDeltaAction describes one WireGuard peer operation.
+type WGPeerDeltaAction string
+
+const (
+	WGPeerAdd    WGPeerDeltaAction = "add"
+	WGPeerRemove WGPeerDeltaAction = "remove"
+)
+
 // WGPeerDeltaOp describes one WireGuard peer reconciliation operation.
 type WGPeerDeltaOp struct {
-	User      string // db username
-	PubKey    string // WireGuard public key
-	AllowedIP string // WireGuard allowed IP for add operations
-	Add       bool   // true = add peer
-	Remove    bool   // true = remove peer
+	User      string            // db username
+	PubKey    string            // WireGuard public key
+	AllowedIP string            // WireGuard allowed IP; required so remove operations can be inverted
+	Action    WGPeerDeltaAction // add or remove peer
 }
 
 // CheckResult is the structured result returned by the internal check routine.
 // HardErrors holds issues that make the state unsafe or ambiguous.
 // Drift holds detected discrepancies between expected and live ipset state.
-// Deltas holds the concrete ipset operations needed to reconcile drift.
+// IPSetDeltas holds the concrete ipset operations needed to reconcile drift.
 // PeerDeltas holds WireGuard peer operations needed to reconcile safe drift.
 // WGDump holds the parsed live WireGuard state; nil if not yet reached.
 type CheckResult struct {
-	HardErrors []string
-	Drift      []string
-	Deltas     []IpsetDeltaOp
-	PeerDeltas []WGPeerDeltaOp
-	WGDump     *WGDumpResult
+	HardErrors  []string
+	Drift       []string
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	WGDump      *WGDumpResult
 }
 
 // OK returns true when there are no hard errors, ipset drift, or peer drift.

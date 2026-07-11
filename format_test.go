@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"testing"
 	"time"
 )
@@ -26,6 +27,30 @@ func TestFormatBytes(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("formatBytes(%d) = %q, want %q", tc.n, got, tc.want)
 		}
+	}
+}
+
+func TestWriteTable(t *testing.T) {
+	var out bytes.Buffer
+	rows := [][]tableCell{
+		{
+			{plain: "bob", display: colorGrey("bob")},
+			{plain: "ok", display: "ok"},
+		},
+		{
+			{plain: "alexandra", display: "alexandra"},
+			{plain: "needs-work", display: colorRed("needs-work")},
+		},
+	}
+
+	writeTable(&out, []string{"NAME", "STATUS"}, rows)
+
+	want := "" +
+		"NAME       STATUS\n" +
+		colorGrey("bob") + "        ok\n" +
+		"alexandra  " + colorRed("needs-work") + "\n"
+	if got := out.String(); got != want {
+		t.Errorf("writeTable() = %q, want %q", got, want)
 	}
 }
 
@@ -82,23 +107,5 @@ func TestFormatHandshake_FutureTimestamp(t *testing.T) {
 	got := formatHandshake(2000, now)
 	if got != "0s" {
 		t.Errorf("future timestamp: got %q, want 0s", got)
-	}
-}
-
-var endpointHostTests = []struct {
-	input, want string
-}{
-	{"(none)", "(none)"},
-	{"192.168.1.100:50001", "192.168.1.100"},
-	{"10.0.0.1:51820", "10.0.0.1"},
-	{"myhost.example.com:12345", "myhost.example.com"},
-}
-
-func TestEndpointHost(t *testing.T) {
-	for _, tc := range endpointHostTests {
-		got := endpointHost(tc.input)
-		if got != tc.want {
-			t.Errorf("endpointHost(%q) = %q, want %q", tc.input, got, tc.want)
-		}
 	}
 }

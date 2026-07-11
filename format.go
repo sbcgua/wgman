@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"net"
+	"io"
+	"strings"
 	"time"
 )
 
@@ -12,6 +13,57 @@ const (
 	ansiRed     = "\x1b[31m"
 	ansiDimCyan = "\x1b[2;36m"
 )
+
+func colorGrey(s string) string {
+	return ansiGrey + s + ansiReset
+}
+
+func colorRed(s string) string {
+	return ansiRed + s + ansiReset
+}
+
+func colorDimCyan(s string) string {
+	return ansiDimCyan + s + ansiReset
+}
+
+type tableCell struct {
+	plain   string
+	display string
+}
+
+func writeTable(w io.Writer, headers []string, rows [][]tableCell) {
+	widths := make([]int, len(headers))
+	for i, header := range headers {
+		widths[i] = len(header)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if len(cell.plain) > widths[i] {
+				widths[i] = len(cell.plain)
+			}
+		}
+	}
+
+	headerCells := make([]tableCell, len(headers))
+	for i, header := range headers {
+		headerCells[i] = tableCell{plain: header, display: header}
+	}
+	writeTableRow(w, headerCells, widths)
+	for _, row := range rows {
+		writeTableRow(w, row, widths)
+	}
+}
+
+func writeTableRow(w io.Writer, row []tableCell, widths []int) {
+	for i, cell := range row {
+		if i == len(row)-1 {
+			fmt.Fprintln(w, cell.display)
+			return
+		}
+		fmt.Fprint(w, cell.display)
+		fmt.Fprint(w, strings.Repeat(" ", widths[i]-len(cell.plain)+2))
+	}
+}
 
 // formatBytes converts a byte count to a compact human-readable string.
 // Format follows the spec example: "2.07Mb".
@@ -39,7 +91,7 @@ func formatBytesColor(n int64, enabled bool) string {
 		return plain
 	}
 	if n == 0 {
-		return ansiGrey + plain + ansiReset
+		return colorGrey(plain)
 	}
 	unitStart := 0
 	for unitStart < len(plain) && ((plain[unitStart] >= '0' && plain[unitStart] <= '9') || plain[unitStart] == '.') {
@@ -48,7 +100,7 @@ func formatBytesColor(n int64, enabled bool) string {
 	if unitStart == len(plain) {
 		return plain
 	}
-	return plain[:unitStart] + ansiDimCyan + plain[unitStart:] + ansiReset
+	return plain[:unitStart] + colorDimCyan(plain[unitStart:])
 }
 
 // formatHandshake formats a Unix timestamp as an age relative to now.
@@ -77,18 +129,17 @@ func formatHandshakeColor(ts int64, now time.Time, enabled bool) string {
 		return formatHandshake(ts, now)
 	}
 	if ts == 0 {
-		return ansiGrey + "never" + ansiReset
+		return colorGrey("never")
 	}
 	days, hours, mins, secs := handshakeAgeParts(ts, now)
 
-	color := func(s string) string { return ansiDimCyan + s + ansiReset }
 	switch {
 	case days > 0:
-		return fmt.Sprintf("%s%dh%s%ds", color(fmt.Sprintf("%dd", days)), hours, color(fmt.Sprintf("%dm", mins)), secs)
+		return fmt.Sprintf("%s%dh%s%ds", colorDimCyan(fmt.Sprintf("%dd", days)), hours, colorDimCyan(fmt.Sprintf("%dm", mins)), secs)
 	case hours > 0:
-		return fmt.Sprintf("%dh%s%ds", hours, color(fmt.Sprintf("%dm", mins)), secs)
+		return fmt.Sprintf("%dh%s%ds", hours, colorDimCyan(fmt.Sprintf("%dm", mins)), secs)
 	case mins > 0:
-		return fmt.Sprintf("%s%ds", color(fmt.Sprintf("%dm", mins)), secs)
+		return fmt.Sprintf("%s%ds", colorDimCyan(fmt.Sprintf("%dm", mins)), secs)
 	default:
 		return fmt.Sprintf("%ds", secs)
 	}
@@ -106,17 +157,4 @@ func handshakeAgeParts(ts int64, now time.Time) (days, hours, mins, secs int64) 
 	hours = age % 24
 	days = age / 24
 	return days, hours, mins, secs
-}
-
-// endpointHost strips the port from a "host:port" endpoint string.
-// Returns "(none)" unchanged.
-func endpointHost(endpoint string) string {
-	if endpoint == "(none)" {
-		return "(none)"
-	}
-	host, _, err := net.SplitHostPort(endpoint)
-	if err != nil {
-		return endpoint // already plain host or unparseable
-	}
-	return host
 }

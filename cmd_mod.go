@@ -1,9 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -12,12 +11,18 @@ type modAccessOp struct {
 	Resource string
 }
 
+type modAccessPlan struct {
+	UpdatedDB     *DB
+	IPSetDeltas   []IpsetDeltaOp
+	User          string
+	AccessChanged bool
+}
+
 type modTogglePlan struct {
-	UpdatedDB *DB
-	Deltas    []IpsetDeltaOp
-	PeerAdd   *WGPeerDeltaOp
-	PeerDel   *WGPeerDeltaOp
-	NoOp      bool
+	UpdatedDB   *DB
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	NoOp        bool
 }
 
 // parseModExpression parses comma-separated access edits such as
@@ -88,27 +93,26 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 2
 	}
 
-	updated, deltas, err := planModAccess(cfg, db, args[0], ops)
+	plan, err := planModAccess(cfg, db, args[0], ops)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	dbChanged := !sameStringSlices(db.Access[args[0]], updated.Access[args[0]])
-	if len(deltas) == 0 && !dbChanged {
+	if len(plan.IPSetDeltas) == 0 && !plan.AccessChanged {
 		fmt.Fprintln(app.Stdout, "mod: no changes needed")
 		return 0
 	}
 
-	changeCount := len(deltas)
-	if dbChanged && len(deltas) == 0 {
+	changeCount := len(plan.IPSetDeltas)
+	if plan.AccessChanged && len(plan.IPSetDeltas) == 0 {
 		changeCount = 1
 	}
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
-	if len(deltas) > 0 {
-		printDeltas(deltas, app.Stdout)
+	if len(plan.IPSetDeltas) > 0 {
+		printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
 	} else {
-		fmt.Fprintf(app.Stdout, "  update db access for %s\n", args[0])
+		fmt.Fprintf(app.Stdout, "  update db access for %s\n", plan.User)
 	}
 
 	if gf.dryRun {
@@ -116,11 +120,11 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 0
 	}
 
-	if err := saveDBAtomic(gf.configDir, updated); err != nil {
+	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
-	if err := ApplyDeltas(deltas, app.Sys); err != nil {
+	if err := ApplyIPSetDeltas(plan.IPSetDeltas, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
@@ -144,37 +148,27 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 		return 0
 	}
 
-	changeCount := len(plan.Deltas)
-	if plan.PeerAdd != nil {
-		changeCount++
-	}
-	if plan.PeerDel != nil {
-		changeCount++
-	}
+	changeCount := len(plan.IPSetDeltas)
+	changeCount += len(plan.PeerDeltas)
 
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
-	printDeltas(plan.Deltas, app.Stdout)
-	if plan.PeerAdd != nil {
-		printPeerDeltas([]WGPeerDeltaOp{*plan.PeerAdd}, app.Stdout)
-	}
-	if plan.PeerDel != nil {
-		printPeerDeltas([]WGPeerDeltaOp{*plan.PeerDel}, app.Stdout)
-	}
+	printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
+	printPeerDeltas(plan.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {
 		fmt.Fprintln(app.Stdout, "mod: dry-run, no changes applied")
 		return 0
 	}
 
-	appliedDeltas, liveErr := applyModToggleLive(cfg.Interface, plan, app.Sys)
+	appliedDeltas, liveErr := ApplyStateDeltasTracked(cfg.Interface, plan.IPSetDeltas, plan.PeerDeltas, app.Sys)
 	if liveErr != nil {
-		rollbackErr := rollbackModToggleLive(cfg.Interface, plan, appliedDeltas, app.Sys)
+		rollbackErr := RollbackStateDeltas(cfg.Interface, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, liveErr, rollbackErr)
 		return 1
 	}
 
 	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		rollbackErr := rollbackModToggleLive(cfg.Interface, plan, appliedDeltas, app.Sys)
+		rollbackErr := RollbackStateDeltas(cfg.Interface, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
@@ -217,84 +211,42 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 	updatedEntry.Inactive = action == "deactivate"
 	updated.Users[user] = updatedEntry
 
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
 	newAll, newMatrix := computeExpectedIPSets(updated)
 	plan := &modTogglePlan{
-		UpdatedDB: updated,
-		Deltas:    diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
+		UpdatedDB:   updated,
+		IPSetDeltas: diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
 	}
 	if action == "activate" {
-		plan.PeerAdd = &WGPeerDeltaOp{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Add: true}
+		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerAdd}}
 	} else {
-		plan.PeerDel = &WGPeerDeltaOp{User: user, PubKey: entry.Pub, Remove: true}
+		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}}
 	}
 	return plan, nil
 }
 
-func applyModToggleLive(iface string, plan *modTogglePlan, sys SystemAdapter) ([]IpsetDeltaOp, error) {
-	if plan.PeerAdd != nil {
-		if err := ApplyPeerDeltas(iface, []WGPeerDeltaOp{*plan.PeerAdd}, sys); err != nil {
-			return nil, err
-		}
-	}
-
-	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, sys)
-	if err != nil {
-		return appliedDeltas, err
-	}
-
-	if plan.PeerDel != nil {
-		if err := ApplyPeerDeltas(iface, []WGPeerDeltaOp{*plan.PeerDel}, sys); err != nil {
-			return appliedDeltas, err
-		}
-	}
-	return appliedDeltas, nil
-}
-
-func rollbackModToggleLive(iface string, plan *modTogglePlan, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
-	var errs []string
-	if plan.PeerDel != nil {
-		user := plan.UpdatedDB.Users[plan.PeerDel.User]
-		if err := sys.WGSetPeer(iface, plan.PeerDel.PubKey, user.IP); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
-		errs = append(errs, err.Error())
-	}
-	if plan.PeerAdd != nil {
-		if err := sys.WGDelPeer(iface, plan.PeerAdd.PubKey); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
-}
-
-func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []IpsetDeltaOp, error) {
+func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAccessPlan, error) {
 	if !nameRe.MatchString(user) {
-		return nil, nil, fmt.Errorf("invalid user name %q", user)
+		return nil, fmt.Errorf("invalid user name %q", user)
 	}
 	if _, ok := db.Users[user]; !ok {
-		return nil, nil, fmt.Errorf("user %q not found", user)
+		return nil, fmt.Errorf("user %q not found", user)
 	}
 
-	updated := cloneDB(db)
+	updatedDb := cloneDB(db)
 	accessSet := map[string]bool{}
-	for _, resource := range updated.Access[user] {
+	for _, resource := range updatedDb.Access[user] {
 		accessSet[resource] = true
 	}
 
 	for _, op := range ops {
 		if op.Resource != "*" {
-			if _, ok := updated.VMs[op.Resource]; !ok {
-				return nil, nil, fmt.Errorf("unknown VM %q", op.Resource)
+			if _, ok := updatedDb.VMs[op.Resource]; !ok {
+				return nil, fmt.Errorf("unknown VM %q", op.Resource)
 			}
 		}
 		if op.Add {
@@ -304,116 +256,18 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 		}
 	}
 
-	updated.Access[user] = normalizeAccessSet(accessSet)
-	normalizeDBAccess(updated)
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	updatedDb.Access[user] = normalizeAccessSet(accessSet)
+	normalizeDBAccess(updatedDb)
+	if errs := validateDB(updatedDb); len(errs) > 0 {
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
-	newAll, newMatrix := computeExpectedIPSets(updated)
-	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
-	return updated, deltas, nil
-}
-
-func diffExpectedIPSets(cfg *Config, oldAll, oldMatrix, newAll, newMatrix map[string]string) []IpsetDeltaOp {
-	var deltas []IpsetDeltaOp
-	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.All, oldAll, newAll)...)
-	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.Matrix, oldMatrix, newMatrix)...)
-	sort.Slice(deltas, func(i, j int) bool {
-		if deltas[i].Set != deltas[j].Set {
-			return deltas[i].Set < deltas[j].Set
-		}
-		if deltas[i].Entry != deltas[j].Entry {
-			return deltas[i].Entry < deltas[j].Entry
-		}
-		return !deltas[i].Add && deltas[j].Add
-	})
-	return deltas
-}
-
-func diffExpectedIPSet(setname string, oldExpected, newExpected map[string]string) []IpsetDeltaOp {
-	var deltas []IpsetDeltaOp
-	for entry, comment := range newExpected {
-		if _, ok := oldExpected[entry]; !ok {
-			deltas = append(deltas, IpsetDeltaOp{
-				Set:     setname,
-				Entry:   entry,
-				Comment: comment,
-				Add:     true,
-			})
-		}
-	}
-	for entry, comment := range oldExpected {
-		if _, ok := newExpected[entry]; !ok {
-			deltas = append(deltas, IpsetDeltaOp{
-				Set:     setname,
-				Entry:   entry,
-				Comment: comment,
-				Add:     false,
-			})
-		}
-	}
-	return deltas
-}
-
-func cloneDB(db *DB) *DB {
-	out := &DB{
-		Users:  make(map[string]UserEntry, len(db.Users)),
-		VMs:    make(map[string]string, len(db.VMs)),
-		Access: make(map[string][]string, len(db.Access)),
-	}
-	for name, user := range db.Users {
-		out.Users[name] = user
-	}
-	for name, ip := range db.VMs {
-		out.VMs[name] = ip
-	}
-	for name, entries := range db.Access {
-		out.Access[name] = append([]string(nil), entries...)
-	}
-	return out
-}
-
-func normalizeDBAccess(db *DB) {
-	for user, entries := range db.Access {
-		if len(entries) == 0 {
-			delete(db.Access, user)
-			continue
-		}
-		set := map[string]bool{}
-		for _, entry := range entries {
-			set[entry] = true
-		}
-		normalized := normalizeAccessSet(set)
-		if len(normalized) == 0 {
-			delete(db.Access, user)
-		} else {
-			db.Access[user] = normalized
-		}
-	}
-}
-
-func normalizeAccessSet(set map[string]bool) []string {
-	if len(set) == 0 {
-		return nil
-	}
-	entries := make([]string, 0, len(set))
-	for entry := range set {
-		entries = append(entries, entry)
-	}
-	sort.Strings(entries)
-	return entries
-}
-
-func sameStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	newAll, newMatrix := computeExpectedIPSets(updatedDb)
+	return &modAccessPlan{
+		UpdatedDB:     updatedDb,
+		IPSetDeltas:   diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
+		User:          user,
+		AccessChanged: !slices.Equal(db.Access[user], updatedDb.Access[user]),
+	}, nil
 }

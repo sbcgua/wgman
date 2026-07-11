@@ -21,38 +21,6 @@ func makeDeployApp(sys *fakeSystem, stdin string) (*App, *strings.Builder, *stri
 	}, stdout, stderr
 }
 
-// writeDeployTestData writes config.yaml and db.yaml matching makeTestCfg() /
-// makeTestDB() to dir for use in deploy command tests.
-func writeDeployTestData(h *testHelper, dir string) {
-	h.writeFile(dir, "config.yaml", `interface: wg0
-sets:
-  all: wg_allow_all
-  matrix: wg_allow_matrix
-`)
-	h.writeFile(dir, "db.yaml", `users:
-  admin:
-    ip: 10.8.0.5
-    pub: ADMIN_PUB=
-  alice:
-    ip: 10.8.0.10
-    pub: ALICE_PUB=
-  bob:
-    ip: 10.8.0.15
-    pub: BOB_PUB=
-vms:
-  sandbox: 192.168.122.100
-  mailvm: 192.168.122.101
-access:
-  admin:
-    - "*"
-  alice:
-    - sandbox
-  bob:
-    - sandbox
-    - mailvm
-`)
-}
-
 func writeDeployInactiveBobTestData(h *testHelper, dir string) {
 	h.writeFile(dir, "config.yaml", `interface: wg0
 sets:
@@ -146,7 +114,7 @@ func TestDeploy_RefusesHardErrors(t *testing.T) {
 	app, _, stderr := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir}
 	code := cmdDeploy(gf, nil, app)
 	if code == 0 {
@@ -162,7 +130,7 @@ func TestDeploy_NoChanges(t *testing.T) {
 	app, stdout, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -181,7 +149,7 @@ func TestDeploy_DryRun(t *testing.T) {
 	app, stdout, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, dryRun: true}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -227,7 +195,7 @@ func TestDeploy_YesFlag(t *testing.T) {
 	app, stdout, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, yes: true}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -246,7 +214,7 @@ func TestDeploy_ConfirmationYes(t *testing.T) {
 	app, stdout, _ := makeDeployApp(sys, "y\n")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -265,7 +233,7 @@ func TestDeploy_ConfirmationRejected(t *testing.T) {
 	app, stdout, _ := makeDeployApp(sys, "n\n")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -303,7 +271,7 @@ func TestDeploy_AppliesAddDelta(t *testing.T) {
 	app, _, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, yes: true}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -333,7 +301,7 @@ func TestDeploy_AppliesDeleteDelta(t *testing.T) {
 	app, _, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, yes: true}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -377,7 +345,7 @@ func TestDeploy_DryRunReportsActivePeerAdd(t *testing.T) {
 	app, stdout, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, dryRun: true}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -401,7 +369,7 @@ func TestDeploy_AppliesActivePeerAddBeforeIPSetAdds(t *testing.T) {
 	app, _, _ := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, yes: true}
 	code := cmdDeploy(gf, nil, app)
 	if code != 0 {
@@ -503,7 +471,7 @@ func TestDeploy_ApplyError(t *testing.T) {
 	app, _, stderr := makeDeployApp(sys, "")
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	gf := &globalFlags{configDir: dir, yes: true}
 	code := cmdDeploy(gf, nil, app)
 	if code == 0 {

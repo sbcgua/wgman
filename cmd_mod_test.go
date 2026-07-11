@@ -63,19 +63,25 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 		{Add: true, Resource: "mailvm"},
 		{Add: false, Resource: "sandbox"},
 	}
-	updated, deltas, err := planModAccess(cfg, db, "alice", ops)
+	plan, err := planModAccess(cfg, db, "alice", ops)
 	if err != nil {
 		t.Fatalf("planModAccess: %v", err)
 	}
-	if got := strings.Join(updated.Access["alice"], ","); got != "mailvm" {
+	if plan.User != "alice" {
+		t.Errorf("plan user = %q, want alice", plan.User)
+	}
+	if !plan.AccessChanged {
+		t.Error("plan AccessChanged = false, want true")
+	}
+	if got := strings.Join(plan.UpdatedDB.Access["alice"], ","); got != "mailvm" {
 		t.Errorf("updated alice access = %q, want mailvm", got)
 	}
-	if len(deltas) != 2 {
-		t.Fatalf("len(deltas) = %d, want 2: %+v", len(deltas), deltas)
+	if len(plan.IPSetDeltas) != 2 {
+		t.Fatalf("len(ipset deltas) = %d, want 2: %+v", len(plan.IPSetDeltas), plan.IPSetDeltas)
 	}
 	wantAdd := false
 	wantDel := false
-	for _, delta := range deltas {
+	for _, delta := range plan.IPSetDeltas {
 		if delta.Add && delta.Entry == "10.8.0.10,192.168.122.101" && delta.Comment == "alice -> mailvm" {
 			wantAdd = true
 		}
@@ -84,14 +90,14 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 		}
 	}
 	if !wantAdd || !wantDel {
-		t.Errorf("missing expected add/delete deltas: %+v", deltas)
+		t.Errorf("missing expected add/delete deltas: %+v", plan.IPSetDeltas)
 	}
 }
 
 func TestMod_RefusesMissingUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"nobody", "+sandbox"}, app)
@@ -106,7 +112,7 @@ func TestMod_RefusesMissingUser(t *testing.T) {
 func TestMod_RefusesUnknownVM(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+unknown"}, app)
@@ -121,7 +127,7 @@ func TestMod_RefusesUnknownVM(t *testing.T) {
 func TestMod_RejectsUnknownBareOperation(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "enable"}, app)
@@ -136,7 +142,7 @@ func TestMod_RejectsUnknownBareOperation(t *testing.T) {
 func TestMod_RefusesPreExistingDrift(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildDriftFakeSystem()
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+mailvm"}, app)
@@ -151,7 +157,7 @@ func TestMod_RefusesPreExistingDrift(t *testing.T) {
 func TestMod_DryRunDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -180,7 +186,7 @@ func TestMod_DryRunDoesNotWriteOrApply(t *testing.T) {
 func TestMod_DeactivateDryRunDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -238,7 +244,7 @@ func TestMod_ActivateDryRunDoesNotWriteOrApply(t *testing.T) {
 func TestMod_ValidationFailureDoesNotWriteOrApply(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	before, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
 	if err != nil {
 		t.Fatalf("read db before: %v", err)
@@ -267,7 +273,7 @@ func TestMod_ValidationFailureDoesNotWriteOrApply(t *testing.T) {
 func TestMod_SuccessWritesDBAndAppliesDelta(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+mailvm"}, app)
@@ -301,7 +307,7 @@ func TestMod_SuccessWritesDBAndAppliesDelta(t *testing.T) {
 func TestMod_DeactivateWritesInactiveDeletesIPSetsAndPeer(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "deactivate"}, app)
@@ -424,7 +430,7 @@ func TestMod_RedundantTogglesAreNoOps(t *testing.T) {
 	}{
 		{
 			name:       "activate active user",
-			writeData:  writeDeployTestData,
+			writeData:  writeValidTestData,
 			sys:        buildCleanFakeSystem(),
 			args:       []string{"alice", "activate"},
 			wantOutput: "already active",
@@ -460,7 +466,7 @@ func TestMod_RedundantTogglesAreNoOps(t *testing.T) {
 func TestMod_RemoveAbsentAccessNoOp(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	writeDeployTestData(h, dir)
+	writeValidTestData(h, dir)
 	sys := buildCleanFakeSystem()
 	app, stdout, _ := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "-mailvm"}, app)

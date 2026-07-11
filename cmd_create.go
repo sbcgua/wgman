@@ -1,17 +1,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
-
-var writeClientConfig = writeClientConfigNoOverwrite
 
 type createArgs struct {
 	Name    string
@@ -20,11 +16,16 @@ type createArgs struct {
 	Comment string
 }
 
-func parseCreateArgs(args []string) (*createArgs, error) {
-	return parseCreateArgsWithComment(args, "", false)
+type createPlan struct {
+	UpdatedDB   *DB
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	ClientIP    string
+	PrivateKey  string
+	PubKey      string
 }
 
-func parseCreateArgsWithComment(args []string, comment string, commentSet bool) (*createArgs, error) {
+func parseCreateArgs(args []string, comment string, commentSet bool) (*createArgs, error) {
 	var err error
 	args, comment, commentSet, err = extractCreateCommentFlags(args, comment, commentSet)
 	if err != nil {
@@ -149,7 +150,7 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	parsed, err := parseCreateArgsWithComment(args, gf.createComment, gf.createCommentSet)
+	parsed, err := parseCreateArgs(args, gf.createComment, gf.createCommentSet)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 2
@@ -186,61 +187,30 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	subnet, err := app.Sys.InterfaceSubnet(cfg.Interface)
-	if err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-
-	privKey, err := app.Sys.WGGenKey()
-	if err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-	pubKey, err := app.Sys.WGPubKey(privKey)
-	if err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-
-	updated, deltas, clientIP, err := planCreateUser(cfg, db, parsed, pubKey, subnet)
+	plan, err := planCreateUser(cfg, db, parsed, app.Sys)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
 	templatePath := filepath.Join(gf.configDir, "user.conf.template")
-	clientConfig, err := renderClientConfig(templatePath, privKey, clientIP, result.WGDump.ServerPubKey)
+	clientConfig, err := renderClientConfig(templatePath, plan.PrivateKey, plan.ClientIP, result.WGDump.ServerPubKey)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	fmt.Fprintf(app.Stdout, "create: planned user %s at %s\n", parsed.Name, clientIP)
-	if len(deltas) > 0 {
-		fmt.Fprintf(app.Stdout, "create: planned access changes (%d):\n", len(deltas))
-		printDeltas(deltas, app.Stdout)
+	fmt.Fprintf(app.Stdout, "create: planned user %s at %s\n", parsed.Name, plan.ClientIP)
+	if len(plan.IPSetDeltas) > 0 {
+		fmt.Fprintf(app.Stdout, "create: planned access changes (%d):\n", len(plan.IPSetDeltas))
+		printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
 	}
 
 	if err := writeClientConfig(clientConfigPath, clientConfig); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
-	if err := app.Sys.WGSetPeer(cfg.Interface, pubKey, clientIP); err != nil {
-		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, nil, app.Sys)
-		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
-		return 1
-	}
-
-	appliedDeltas, err := ApplyDeltasTracked(deltas, app.Sys)
-	if err != nil {
-		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, appliedDeltas, app.Sys)
-		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
-		return 1
-	}
-
-	if err := saveDBAtomic(gf.configDir, updated); err != nil {
-		rollbackErr := rollbackCreateLiveState(cfg.Interface, pubKey, clientConfigPath, appliedDeltas, app.Sys)
+	if err, rollbackErr := applyCreateUserPlan(gf.configDir, cfg.Interface, clientConfigPath, plan, app.Sys); err != nil {
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
@@ -249,74 +219,90 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 	return 0
 }
 
-func rollbackCreateLiveState(iface, pubKey, clientConfigPath string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
-	var errs []string
-	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
-		errs = append(errs, err.Error())
+func applyCreateUserPlan(configDir, iface, clientConfigPath string, plan *createPlan, sys SystemAdapter) (applyErr, rollbackErr error) {
+	applied, err := ApplyStateDeltasTracked(iface, plan.IPSetDeltas, plan.PeerDeltas, sys)
+	if err != nil {
+		return err, rollbackCreateLiveState(iface, clientConfigPath, applied, sys)
 	}
-	if err := sys.WGDelPeer(iface, pubKey); err != nil {
+
+	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
+		return err, rollbackCreateLiveState(iface, clientConfigPath, applied, sys)
+	}
+
+	return nil, nil
+}
+
+func rollbackCreateLiveState(iface, clientConfigPath string, applied AppliedStateDeltas, sys SystemAdapter) error {
+	var errs []string
+	if err := RollbackStateDeltas(iface, applied, sys); err != nil {
 		errs = append(errs, err.Error())
 	}
 	if err := os.Remove(clientConfigPath); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, err.Error())
 	}
 	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }
 
-func printApplyAndRollbackError(w io.Writer, err, rollbackErr error) {
-	if rollbackErr != nil {
-		fmt.Fprintf(w, "error: %v (rollback failed: %v)\n", err, rollbackErr)
-		return
-	}
-	fmt.Fprintln(w, "error:", err)
-}
-
-func planCreateUser(cfg *Config, db *DB, args *createArgs, pubKey, subnet string) (*DB, []IpsetDeltaOp, string, error) {
+func planCreateUser(cfg *Config, db *DB, args *createArgs, sys SystemAdapter) (*createPlan, error) {
 	if !nameRe.MatchString(args.Name) {
-		return nil, nil, "", fmt.Errorf("invalid user name %q", args.Name)
+		return nil, fmt.Errorf("invalid user name %q", args.Name)
 	}
 	if _, ok := db.Users[args.Name]; ok {
-		return nil, nil, "", fmt.Errorf("user %q already exists", args.Name)
+		return nil, fmt.Errorf("user %q already exists", args.Name)
 	}
 	for existing := range db.Users {
 		if caseFold(existing) == caseFold(args.Name) {
-			return nil, nil, "", fmt.Errorf("user name %q conflicts with %q (case)", args.Name, existing)
+			return nil, fmt.Errorf("user name %q conflicts with %q (case)", args.Name, existing)
 		}
 	}
+
+	subnet, err := sys.InterfaceSubnet(cfg.Interface)
+	if err != nil {
+		return nil, err
+	}
+
+	privKey, err := sys.WGGenKey()
+	if err != nil {
+		return nil, err
+	}
+	pubKey, err := sys.WGPubKey(privKey)
+	if err != nil {
+		return nil, err
+	}
+
 	if pubKey == "" {
-		return nil, nil, "", fmt.Errorf("generated public key is empty")
+		return nil, fmt.Errorf("generated public key is empty")
 	}
 	for existing, user := range db.Users {
 		if user.Pub == pubKey {
-			return nil, nil, "", fmt.Errorf("generated public key conflicts with existing user %q", existing)
+			return nil, fmt.Errorf("generated public key conflicts with existing user %q", existing)
 		}
 	}
 
 	clientIP := args.IP
-	var err error
 	if clientIP == "" {
 		clientIP, err = allocateNextUserIP(subnet, db)
 		if err != nil {
-			return nil, nil, "", err
+			return nil, err
 		}
 	}
 	if ip := net.ParseIP(clientIP); ip == nil || ip.To4() == nil {
-		return nil, nil, "", fmt.Errorf("invalid client IP %q", clientIP)
+		return nil, fmt.Errorf("invalid client IP %q", clientIP)
 	}
 	_, ipNet, err := parseIPv4CIDR(subnet)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, err
 	}
 	parsedClientIP := net.ParseIP(clientIP)
 	if !ipNet.Contains(parsedClientIP) {
-		return nil, nil, "", fmt.Errorf("client IP %s is outside interface subnet %s", clientIP, subnet)
+		return nil, fmt.Errorf("client IP %s is outside interface subnet %s", clientIP, subnet)
 	}
 	for existing, user := range db.Users {
 		if user.IP == clientIP {
-			return nil, nil, "", fmt.Errorf("client IP %s conflicts with existing user %q", clientIP, existing)
+			return nil, fmt.Errorf("client IP %s conflicts with existing user %q", clientIP, existing)
 		}
 	}
 
@@ -326,14 +312,21 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, pubKey, subnet string
 		updated.Access[args.Name] = append([]string(nil), args.Access...)
 	}
 	normalizeDBAccess(updated)
-	if result := ValidateOffline(cfg, updated); !result.OK() {
-		return nil, nil, "", fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(result.HardErrors, "; "))
+	if errs := validateDB(updated); len(errs) > 0 {
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
 	newAll, newMatrix := computeExpectedIPSets(updated)
 	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
-	return updated, deltas, clientIP, nil
+	return &createPlan{
+		UpdatedDB:   updated,
+		IPSetDeltas: deltas,
+		PeerDeltas:  []WGPeerDeltaOp{{User: args.Name, PubKey: pubKey, AllowedIP: clientIP, Action: WGPeerAdd}},
+		ClientIP:    clientIP,
+		PrivateKey:  privKey,
+		PubKey:      pubKey,
+	}, nil
 }
 
 func allocateNextUserIP(subnet string, db *DB) (string, error) {
@@ -369,78 +362,4 @@ func allocateNextUserIP(subnet string, db *DB) (string, error) {
 		return "", fmt.Errorf("no available IP in %s after existing users", subnet)
 	}
 	return uint32ToIPv4(uint32(next)), nil
-}
-
-func parseIPv4CIDR(subnet string) (net.IP, *net.IPNet, error) {
-	ip, ipNet, err := net.ParseCIDR(subnet)
-	if err != nil || ip.To4() == nil {
-		return nil, nil, fmt.Errorf("invalid interface subnet %q", subnet)
-	}
-	ones, bits := ipNet.Mask.Size()
-	if ones < 0 || bits != 32 {
-		return nil, nil, fmt.Errorf("interface subnet %q is not IPv4", subnet)
-	}
-	return ip, ipNet, nil
-}
-
-func renderClientConfig(templatePath, privateKey, clientIP, serverPublicKey string) (string, error) {
-	data, err := os.ReadFile(templatePath)
-	if err != nil {
-		return "", fmt.Errorf("read user.conf.template: %w", err)
-	}
-	out := trimLeadingBlankLines(stripCommentLines(string(data)))
-	replacements := map[string]string{
-		"$CLIENT_PRIVATE_KEY": privateKey,
-		"$CLIENT_VPN_IP":      clientIP,
-		"$SERVER_PUBLIC_KEY":  serverPublicKey,
-	}
-	for placeholder, value := range replacements {
-		out = strings.ReplaceAll(out, placeholder, value)
-	}
-	return out, nil
-}
-
-func stripCommentLines(s string) string {
-	lines := strings.SplitAfter(s, "\n")
-	var out strings.Builder
-	for _, line := range lines {
-		withoutNewline := strings.TrimRight(line, "\r\n")
-		if strings.HasPrefix(strings.TrimSpace(withoutNewline), "#") {
-			continue
-		}
-		out.WriteString(line)
-	}
-	return out.String()
-}
-
-func trimLeadingBlankLines(s string) string {
-	lines := strings.SplitAfter(s, "\n")
-	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
-		lines = lines[1:]
-	}
-	return strings.Join(lines, "")
-}
-
-func writeClientConfigNoOverwrite(path, content string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return fmt.Errorf("create %s: %w", path, err)
-	}
-	if _, err := f.WriteString(content); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", path, err)
-	}
-	return nil
-}
-
-func ipv4ToUint32(ip net.IP) uint32 {
-	ip4 := ip.To4()
-	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
-}
-
-func uint32ToIPv4(n uint32) string {
-	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n)).String()
 }

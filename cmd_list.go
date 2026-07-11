@@ -40,7 +40,7 @@ func cmdList(gf *globalFlags, args []string, app *App) int {
 		filter = args[0]
 	}
 	color := false
-	if !gf.noColor && app.IsStdoutTTY != nil {
+	if !gf.noColor {
 		color = app.IsStdoutTTY()
 	}
 	return runListWithColor(db, result, filter, app.Stdout, app.Stderr, color)
@@ -97,9 +97,9 @@ func colorAccessItem(item string, color bool) string {
 	}
 	switch item {
 	case "none":
-		return ansiGrey + item + ansiReset
+		return colorGrey(item)
 	case "*":
-		return ansiRed + item + ansiReset
+		return colorRed(item)
 	default:
 		return item
 	}

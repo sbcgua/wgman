@@ -1,9 +1,7 @@
 # Implementation Notes
 
 These notes capture project conventions and design decisions that are useful for
-future changes. They intentionally omit phase history; use
-[archive/PROGRESS.md](archive/PROGRESS.md) only when the chronological handoff
-is needed.
+future changes. They intentionally omit implementation history.
 
 ## Configuration And Data
 
@@ -11,6 +9,9 @@ is needed.
 - Config files are `config.yaml`, `db.yaml`, and `user.conf.template`.
 - YAML loading uses `yaml.Decoder.KnownFields(true)`, so unknown fields are
   rejected.
+- `validateDB` is the single home for DB internal consistency checks. `LoadDB`
+  converts its returned messages to an error, and `Check` reuses the same
+  messages as hard errors before live system validation.
 - User and VM names must match `^[A-Za-z0-9_-]+$`.
 - Names are case-sensitive for lookup, but case-only conflicts are rejected
   with simple ASCII folding (`caseFold`).
@@ -38,10 +39,18 @@ is needed.
 
 ## Check And Drift Policy
 
+- `check.go` is the read-only reconciliation engine: it validates desired state
+  against live state and produces hard errors and planned deltas.
+- `deploy.go` applies already-planned deltas in dependency-aware order. CLI
+  concerns such as loading files, flags, output, prompts, and exit codes remain
+  in `cmd_check.go` and `cmd_deploy.go`.
 - `CheckResult` separates hard errors from ipset drift.
 - `CheckResult.PeerDeltas` holds safe WireGuard peer operations for known DB
   users, such as adding missing active peers and removing live peers for
   inactive users.
+- WireGuard peer deltas use an explicit action and always carry `AllowedIP`,
+  including remove operations. Rollback inverts peer deltas without consulting
+  DB state, so remove deltas must keep the last intended allowed IP.
 - `deploy` may reconcile ipset drift and known-user peer drift when there are
   no hard errors.
 - `create`, `remove`, `mod`, `list`, and `show` require a fully clean
@@ -53,8 +62,8 @@ is needed.
   active users missing from WireGuard are addable drift.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
-- `CheckResult.HardErrors`, `Drift`, and `Deltas` are sorted before return for
-  stable output and assertions.
+- `CheckResult.HardErrors`, `Drift`, `IPSetDeltas`, and `PeerDeltas` are
+  sorted before return for stable output and assertions.
 - `CheckResult.WGDump` is populated after a successful WireGuard dump parse and
   can be nil if checking stops early.
 
@@ -100,8 +109,8 @@ is needed.
 - `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
 - `--no-color` is a global output flag. Color decisions go through `App`'s
-  injectable stdout TTY boundary; tests and non-TTY output default to plain
-  text.
+  stdout TTY boundary, which delegates terminal detection to `SystemAdapter`;
+  tests and non-TTY output default to plain text.
 - `create` and `mod` do not prompt after validation.
 - `add` is a CLI alias for `create`.
 - `create`/`add` support `-c <comment>` for storing user metadata. The value
@@ -109,10 +118,16 @@ is needed.
   edits are manual `db.yaml` edits.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
+- Command-level planning helpers return plan structs rather than parallel
+  result values. Plans use `IPSetDeltas` and `PeerDeltas` field names for live
+  system changes.
 - `deploy` applies WireGuard peer additions, then ipset deltas, then
   WireGuard peer removals. Activation repair therefore restores the peer before
   access entries, and inactive cleanup deletes managed ipset entries before
   removing the live peer.
+- Command rollback uses the same state delta engine as forward application:
+  completed peer removals are re-added, completed ipset changes are inverted,
+  and completed peer additions are removed.
 - `mod <user> activate` and `mod <user> deactivate` succeed as no-ops when the
   user is already in the requested state.
 - Inactive toggles apply live changes before committing `db.yaml`; failed live

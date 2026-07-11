@@ -44,6 +44,13 @@ type globalFlags struct {
 	createCommentSet bool
 }
 
+type parsedCommand struct {
+	name string
+	args []string
+	gf   *globalFlags
+	help bool
+}
+
 type trackedStringFlag struct {
 	value *string
 	set   *bool
@@ -76,29 +83,26 @@ func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
 // App holds all injectable dependencies for command handlers.
 // main() is the only place that constructs an App backed by real OS resources.
 type App struct {
-	Sys         SystemAdapter
-	Stdin       io.Reader
-	Stdout      io.Writer
-	Stderr      io.Writer
-	Now         func() time.Time
-	IsStdoutTTY func() bool
+	Sys    SystemAdapter
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	Now    func() time.Time
 }
 
 // newRealApp returns an App wired to real OS dependencies.
 func newRealApp() *App {
 	return &App{
-		Sys:         &RealSystem{},
-		Stdin:       os.Stdin,
-		Stdout:      os.Stdout,
-		Stderr:      os.Stderr,
-		Now:         time.Now,
-		IsStdoutTTY: isStdoutTTY,
+		Sys:    &RealSystem{},
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Now:    time.Now,
 	}
 }
 
-func isStdoutTTY() bool {
-	info, err := os.Stdout.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+func (app *App) IsStdoutTTY() bool {
+	return app.Sys.IsTerminal(app.Stdout)
 }
 
 // run is the entry point called from main; it builds a real App and delegates.
@@ -106,16 +110,14 @@ func run(args []string) int {
 	return runApp(args, newRealApp())
 }
 
-// runApp is the testable core of the CLI; app supplies all OS dependencies.
-func runApp(args []string, app *App) int {
+func parseCommandArgs(args []string, stderr io.Writer) (*parsedCommand, error) {
 	if len(args) == 0 {
-		fmt.Fprint(app.Stdout, helpText)
-		return 0
+		return &parsedCommand{help: true}, nil
 	}
 
 	// Build a single global FlagSet used for both passes.
 	fs := flag.NewFlagSet("wgman", flag.ContinueOnError)
-	fs.SetOutput(app.Stderr)
+	fs.SetOutput(stderr)
 	gf := &globalFlags{}
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
@@ -127,16 +129,14 @@ func runApp(args []string, app *App) int {
 	// fs.Parse stops at the first non-flag argument (the command).
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Fprint(app.Stdout, helpText)
-			return 0
+			return &parsedCommand{help: true}, nil
 		}
-		return 2
+		return nil, err
 	}
 
 	remaining := fs.Args() // [command, args...]
 	if len(remaining) == 0 || remaining[0] == "help" || remaining[0] == "-h" || remaining[0] == "--help" {
-		fmt.Fprint(app.Stdout, helpText)
-		return 0
+		return &parsedCommand{help: true}, nil
 	}
 
 	cmd := remaining[0]
@@ -144,44 +144,59 @@ func runApp(args []string, app *App) int {
 	// Second pass: consume any flags that appear after the command name.
 	if err := fs.Parse(remaining[1:]); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Fprint(app.Stdout, helpText)
-			return 0
+			return &parsedCommand{help: true}, nil
 		}
-		return 2
+		return nil, err
 	}
 
 	cmdArgs := fs.Args() // positional args for the command
 	if gf.createCommentSet && cmd != "create" && cmd != "add" {
-		fmt.Fprintf(app.Stderr, "error: -c is only supported by create/add\n")
-		return 2
+		err := fmt.Errorf("-c is only supported by create/add")
+		fmt.Fprintln(stderr, "error:", err)
+		return nil, err
 	}
 	if gf.createCommentSet {
 		gf.createComment = strings.TrimSpace(gf.createComment)
 		if gf.createComment == "" {
-			fmt.Fprintln(app.Stderr, "error: create comment must not be empty")
-			return 2
+			err := fmt.Errorf("create comment must not be empty")
+			fmt.Fprintln(stderr, "error:", err)
+			return nil, err
 		}
 	}
 
-	switch cmd {
+	return &parsedCommand{name: cmd, args: cmdArgs, gf: gf}, nil
+}
+
+// runApp is the testable core of the CLI; app supplies all OS dependencies.
+func runApp(args []string, app *App) int {
+	parsed, err := parseCommandArgs(args, app.Stderr)
+	if err != nil {
+		return 2
+	}
+	if parsed.help {
+		fmt.Fprint(app.Stdout, helpText)
+		return 0
+	}
+
+	switch parsed.name {
 	case "check":
-		return cmdCheck(gf, cmdArgs, app)
+		return cmdCheck(parsed.gf, parsed.args, app)
 	case "list":
-		return cmdList(gf, cmdArgs, app)
+		return cmdList(parsed.gf, parsed.args, app)
 	case "show":
-		return cmdShow(gf, cmdArgs, app)
+		return cmdShow(parsed.gf, parsed.args, app)
 	case "init-ipsets":
-		return cmdInitIPSets(gf, cmdArgs, app)
+		return cmdInitIPSets(parsed.gf, parsed.args, app)
 	case "deploy":
-		return cmdDeploy(gf, cmdArgs, app)
+		return cmdDeploy(parsed.gf, parsed.args, app)
 	case "mod":
-		return cmdMod(gf, cmdArgs, app)
+		return cmdMod(parsed.gf, parsed.args, app)
 	case "create", "add":
-		return cmdCreate(gf, cmdArgs, app)
+		return cmdCreate(parsed.gf, parsed.args, app)
 	case "remove":
-		return cmdRemove(gf, cmdArgs, app)
+		return cmdRemove(parsed.gf, parsed.args, app)
 	default:
-		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", cmd)
+		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", parsed.name)
 		return 2
 	}
 }
