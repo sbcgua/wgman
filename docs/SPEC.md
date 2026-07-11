@@ -345,3 +345,7 @@ Tests should prefer table-driven cases with small fixture strings for external c
 2. user record may have optional flag `inactive` (boolean). If `true`: the deploy should remove the user from wg and the relevant ipsets. Yet the user record itself stays.
 3. There also should be an command line option to toggle inactive state. `wgman mod <user> activate/deactivate`. It will not conflict with adding vms, as those always start from `+` or `-`. The `activate` should remove the `inactive` flag at all for readability. The command applies the changes immediately.
 4. some eyecandy stuff: let's add colors to `wgman show` to latest handshake field. If the field = `never`, color it in grey. If there is time, then days and minutes should be colored in some relatively dim yet distinguishable color (cyan?). The seconds and hours should stay as is. The color should be suppressable with `--no-color` option
+
+## Postimplementation Improvement #2 - Port-Limited VM Access
+
+See [PORT_LIMITED_ACCESS_IMPROVEMENT.md](./archive/PORT_LIMITED_ACCESS_IMPROVEMENT.md). Also integrated in the text above.
