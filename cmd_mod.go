@@ -42,7 +42,7 @@ func parseModExpression(expr string) ([]modAccessOp, error) {
 			return nil, fmt.Errorf("operation %q must start with + or -", part)
 		}
 		resource := part[1:]
-		if resource != "*" && !nameRe.MatchString(resource) {
+		if resource != "*" && !resourceNameRe.MatchString(resource) {
 			return nil, fmt.Errorf("invalid resource name %q", resource)
 		}
 		key := resource
@@ -215,11 +215,11 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
-	oldAll, oldMatrix := computeExpectedIPSets(db)
-	newAll, newMatrix := computeExpectedIPSets(updated)
+	oldExpected := computeExpectedIPSets(db)
+	newExpected := computeExpectedIPSets(updated)
 	plan := &modTogglePlan{
 		UpdatedDB:   updated,
-		IPSetDeltas: diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
+		IPSetDeltas: diffExpectedIPSets(cfg, oldExpected, newExpected),
 	}
 	if action == "activate" {
 		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerAdd}}
@@ -246,7 +246,9 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAcc
 	for _, op := range ops {
 		if op.Resource != "*" {
 			if _, ok := updatedDb.VMs[op.Resource]; !ok {
-				return nil, fmt.Errorf("unknown VM %q", op.Resource)
+				if _, ok := updatedDb.Resources[op.Resource]; !ok {
+					return nil, fmt.Errorf("unknown access target %q", op.Resource)
+				}
 			}
 		}
 		if op.Add {
@@ -262,11 +264,11 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAcc
 		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
-	oldAll, oldMatrix := computeExpectedIPSets(db)
-	newAll, newMatrix := computeExpectedIPSets(updatedDb)
+	oldExpected := computeExpectedIPSets(db)
+	newExpected := computeExpectedIPSets(updatedDb)
 	return &modAccessPlan{
 		UpdatedDB:     updatedDb,
-		IPSetDeltas:   diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
+		IPSetDeltas:   diffExpectedIPSets(cfg, oldExpected, newExpected),
 		User:          user,
 		AccessChanged: !slices.Equal(db.Access[user], updatedDb.Access[user]),
 	}, nil

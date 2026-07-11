@@ -13,6 +13,17 @@ vms:
   sandbox: 192.168.122.100
   mailvm: 192.168.122.101
 
+resources:
+  ssh@sandbox:
+    vm: sandbox
+    ports: 22
+    comment: access to SSH
+  dns@mailvm:
+    vm: mailvm
+    ports:
+      - udp:53
+      - tcp:53
+
 access:
   admin:
     - "*"

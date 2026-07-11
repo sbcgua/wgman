@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -16,6 +17,9 @@ import (
 
 // nameRe is the allowed pattern for user and VM names.
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// resourceNameRe is the allowed pattern for named VM services.
+var resourceNameRe = regexp.MustCompile(`^[A-Za-z0-9_@-]+$`)
 
 var saveDBAtomic = SaveDBAtomic
 
@@ -44,6 +48,62 @@ type validationErrors []string
 
 func (errs validationErrors) Error() string {
 	return strings.Join(errs, "; ")
+}
+
+func (ports *ResourcePorts) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		port, err := parseResourcePortScalar(value.Value)
+		if err != nil {
+			return err
+		}
+		*ports = []ResourcePort{port}
+		return nil
+	case yaml.SequenceNode:
+		out := make([]ResourcePort, 0, len(value.Content))
+		for _, item := range value.Content {
+			if item.Kind != yaml.ScalarNode {
+				return fmt.Errorf("resource ports must be scalars")
+			}
+			port, err := parseResourcePortScalar(item.Value)
+			if err != nil {
+				return err
+			}
+			out = append(out, port)
+		}
+		*ports = out
+		return nil
+	default:
+		return fmt.Errorf("resource ports must be a scalar or sequence")
+	}
+}
+
+func parseResourcePortScalar(value string) (ResourcePort, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ResourcePort{}, fmt.Errorf("resource port must not be empty")
+	}
+	protocol := "tcp"
+	portText := value
+	if before, after, ok := strings.Cut(value, ":"); ok {
+		protocol = strings.ToLower(strings.TrimSpace(before))
+		portText = strings.TrimSpace(after)
+	}
+	if protocol != "tcp" && protocol != "udp" {
+		return ResourcePort{}, fmt.Errorf("resource port protocol %q must be tcp or udp", protocol)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		return ResourcePort{}, fmt.Errorf("resource port %q is not numeric", portText)
+	}
+	if port < 1 || port > 65535 {
+		return ResourcePort{}, fmt.Errorf("resource port %d is outside 1..65535", port)
+	}
+	return ResourcePort{Protocol: protocol, Port: port}, nil
+}
+
+func (p ResourcePort) String() string {
+	return fmt.Sprintf("%s:%d", p.Protocol, p.Port)
 }
 
 func validateDB(db *DB) []string {
@@ -91,6 +151,50 @@ func validateDB(db *DB) []string {
 		}
 	}
 
+	// Validate resource names and definitions. VMs and resources share one
+	// access namespace, so exact and case-only conflicts are rejected.
+	seenTargetLower := map[string]string{}
+	for name := range db.VMs {
+		seenTargetLower[caseFold(name)] = name
+	}
+	for name, resource := range db.Resources {
+		if !resourceNameRe.MatchString(name) {
+			errs = append(errs, fmt.Sprintf("db.yaml: invalid resource name %q", name))
+		}
+		if name == "*" {
+			errs = append(errs, "db.yaml: resource name \"*\" is reserved")
+		}
+		if _, ok := db.VMs[name]; ok {
+			errs = append(errs, fmt.Sprintf("db.yaml: resource %q conflicts with VM of the same name", name))
+		}
+		if conflict, ok := seenTargetLower[caseFold(name)]; ok {
+			errs = append(errs, fmt.Sprintf("db.yaml: resource name %q conflicts with %q (case)", name, conflict))
+		}
+		seenTargetLower[caseFold(name)] = name
+		if resource.VM == "" {
+			errs = append(errs, fmt.Sprintf("db.yaml: resource %q: vm is required", name))
+		} else if _, ok := db.VMs[resource.VM]; !ok {
+			errs = append(errs, fmt.Sprintf("db.yaml: resource %q references unknown vm %q", name, resource.VM))
+		}
+		if len(resource.Ports) == 0 {
+			errs = append(errs, fmt.Sprintf("db.yaml: resource %q: ports is required", name))
+		}
+		seenPorts := map[string]bool{}
+		for _, port := range resource.Ports {
+			if port.Protocol != "tcp" && port.Protocol != "udp" {
+				errs = append(errs, fmt.Sprintf("db.yaml: resource %q has invalid port protocol %q", name, port.Protocol))
+			}
+			if port.Port < 1 || port.Port > 65535 {
+				errs = append(errs, fmt.Sprintf("db.yaml: resource %q has invalid port %d", name, port.Port))
+			}
+			key := port.String()
+			if seenPorts[key] {
+				errs = append(errs, fmt.Sprintf("db.yaml: resource %q contains duplicate port %s", name, key))
+			}
+			seenPorts[key] = true
+		}
+	}
+
 	// Validate duplicate IPs across users.
 	seenIPs := map[string]string{} // ip -> user name
 	for name, u := range db.Users {
@@ -131,11 +235,13 @@ func validateDB(db *DB) []string {
 				hasAdminStar = true
 				continue
 			}
-			if !nameRe.MatchString(vm) {
-				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q: invalid vm name %q", user, vm))
+			if !resourceNameRe.MatchString(vm) {
+				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q: invalid access target name %q", user, vm))
 			}
 			if _, ok := db.VMs[vm]; !ok {
-				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q references unknown vm %q", user, vm))
+				if _, ok := db.Resources[vm]; !ok {
+					errs = append(errs, fmt.Sprintf("db.yaml: access for user %q references unknown access target %q", user, vm))
+				}
 			}
 		}
 		if hasAdminStar && len(vms) > 1 {
@@ -150,15 +256,20 @@ func validateDB(db *DB) []string {
 // cloneDB returns an independent copy suitable for planning DB changes.
 func cloneDB(db *DB) *DB {
 	out := &DB{
-		Users:  make(map[string]UserEntry, len(db.Users)),
-		VMs:    make(map[string]string, len(db.VMs)),
-		Access: make(map[string][]string, len(db.Access)),
+		Users:     make(map[string]UserEntry, len(db.Users)),
+		VMs:       make(map[string]string, len(db.VMs)),
+		Resources: make(map[string]ResourceEntry, len(db.Resources)),
+		Access:    make(map[string][]string, len(db.Access)),
 	}
 	for name, user := range db.Users {
 		out.Users[name] = user
 	}
 	for name, ip := range db.VMs {
 		out.VMs[name] = ip
+	}
+	for name, resource := range db.Resources {
+		resource.Ports = append(ResourcePorts(nil), resource.Ports...)
+		out.Resources[name] = resource
 	}
 	for name, entries := range db.Access {
 		out.Access[name] = append([]string(nil), entries...)
@@ -265,6 +376,7 @@ func marshalDBDeterministic(db *DB) ([]byte, error) {
 	root.Content = append(root.Content,
 		scalarNode("users"), usersNode(db.Users),
 		scalarNode("vms"), stringMapNode(db.VMs),
+		scalarNode("resources"), resourcesNode(db.Resources),
 		scalarNode("access"), accessNode(db.Access),
 	)
 
@@ -282,6 +394,8 @@ func marshalDBDeterministic(db *DB) ([]byte, error) {
 
 func addBlankLinesBetweenDBSections(data []byte) []byte {
 	data = bytes.ReplaceAll(data, []byte("\nvms:\n"), []byte("\n\nvms:\n"))
+	data = bytes.ReplaceAll(data, []byte("\nresources:\n"), []byte("\n\nresources:\n"))
+	data = bytes.ReplaceAll(data, []byte("\nresources: {}\n"), []byte("\n\nresources: {}\n"))
 	data = bytes.ReplaceAll(data, []byte("\naccess:\n"), []byte("\n\naccess:\n"))
 	return data
 }
@@ -315,6 +429,34 @@ func stringMapNode(values map[string]string) *yaml.Node {
 	sort.Strings(keys)
 	for _, key := range keys {
 		node.Content = append(node.Content, scalarNode(key), scalarNode(values[key]))
+	}
+	return node
+}
+
+func resourcesNode(resources map[string]ResourceEntry) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	for _, name := range sortedKeys(resources) {
+		resource := resources[name]
+		entry := &yaml.Node{Kind: yaml.MappingNode}
+		entry.Content = append(entry.Content,
+			scalarNode("vm"), scalarNode(resource.VM),
+			scalarNode("ports"), resourcePortsNode(resource.Ports),
+		)
+		if resource.Comment != "" {
+			entry.Content = append(entry.Content, scalarNode("comment"), scalarNode(resource.Comment))
+		}
+		node.Content = append(node.Content, scalarNode(name), entry)
+	}
+	return node
+}
+
+func resourcePortsNode(ports ResourcePorts) *yaml.Node {
+	if len(ports) == 1 {
+		return scalarNode(ports[0].String())
+	}
+	node := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, port := range ports {
+		node.Content = append(node.Content, scalarNode(port.String()))
 	}
 	return node
 }

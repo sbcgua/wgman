@@ -100,9 +100,9 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
-	oldAll, oldMatrix := computeExpectedIPSets(db)
-	newAll, newMatrix := computeExpectedIPSets(updated)
-	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
+	oldExpected := computeExpectedIPSets(db)
+	newExpected := computeExpectedIPSets(updated)
+	deltas := diffExpectedIPSets(cfg, oldExpected, newExpected)
 
 	access := append([]string(nil), db.Access[user]...)
 	sort.Strings(access)

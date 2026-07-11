@@ -119,7 +119,7 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 	}
 
 	// --- ipset drift detection ---
-	allExpected, matrixExpected := computeExpectedIPSets(db)
+	expected := computeExpectedIPSets(db)
 
 	// All-access set.
 	allRaw, err := sys.IPSetList(cfg.Sets.All)
@@ -134,24 +134,41 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		} else if errs := validateAllAccessIPSet(cfg.Sets.All, allParsed); len(errs) > 0 {
 			result.HardErrors = append(result.HardErrors, errs...)
 		} else {
-			reconcileIPSet(cfg.Sets.All, allExpected, allParsed.Entries, result)
+			reconcileIPSet(cfg.Sets.All, expected.All, allParsed.Entries, result)
 		}
 	}
 
-	// Matrix set.
-	matrixRaw, err := sys.IPSetList(cfg.Sets.Matrix)
+	// IP matrix set.
+	matrixRaw, err := sys.IPSetList(cfg.Sets.IPMatrix)
 	if err != nil {
 		result.HardErrors = append(result.HardErrors,
-			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.Matrix, err))
+			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.IPMatrix, err))
 	} else {
 		matrixParsed, err := ParseIPSet(matrixRaw)
 		if err != nil {
 			result.HardErrors = append(result.HardErrors,
-				fmt.Sprintf("parse ipset %q: %s", cfg.Sets.Matrix, err))
-		} else if errs := validateMatrixIPSet(cfg.Sets.Matrix, matrixParsed); len(errs) > 0 {
+				fmt.Sprintf("parse ipset %q: %s", cfg.Sets.IPMatrix, err))
+		} else if errs := validateIPMatrixIPSet(cfg.Sets.IPMatrix, matrixParsed); len(errs) > 0 {
 			result.HardErrors = append(result.HardErrors, errs...)
 		} else {
-			reconcileIPSet(cfg.Sets.Matrix, matrixExpected, matrixParsed.Entries, result)
+			reconcileIPSet(cfg.Sets.IPMatrix, expected.IPMatrix, matrixParsed.Entries, result)
+		}
+	}
+
+	// Port matrix set.
+	portMatrixRaw, err := sys.IPSetList(cfg.Sets.PortMatrix)
+	if err != nil {
+		result.HardErrors = append(result.HardErrors,
+			fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.PortMatrix, err))
+	} else {
+		portMatrixParsed, err := ParseIPSet(portMatrixRaw)
+		if err != nil {
+			result.HardErrors = append(result.HardErrors,
+				fmt.Sprintf("parse ipset %q: %s", cfg.Sets.PortMatrix, err))
+		} else if errs := validatePortMatrixIPSet(cfg.Sets.PortMatrix, portMatrixParsed); len(errs) > 0 {
+			result.HardErrors = append(result.HardErrors, errs...)
+		} else {
+			reconcileIPSet(cfg.Sets.PortMatrix, expected.PortMatrix, portMatrixParsed.Entries, result)
 		}
 	}
 
@@ -174,11 +191,12 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 }
 
 // computeExpectedIPSets derives the desired ipset state from db.yaml.
-// Returns allExpected (entry→comment) for the all-access set and
-// matrixExpected (entry→comment) for the matrix set.
-func computeExpectedIPSets(db *DB) (allExpected, matrixExpected map[string]string) {
-	allExpected = make(map[string]string)
-	matrixExpected = make(map[string]string)
+func computeExpectedIPSets(db *DB) ExpectedIPSets {
+	expected := ExpectedIPSets{
+		All:        make(map[string]string),
+		IPMatrix:   make(map[string]string),
+		PortMatrix: make(map[string]string),
+	}
 
 	for user, vms := range db.Access {
 		u, ok := db.Users[user]
@@ -187,18 +205,29 @@ func computeExpectedIPSets(db *DB) (allExpected, matrixExpected map[string]strin
 		}
 		for _, vm := range vms {
 			if vm == "*" {
-				allExpected[u.IP] = ""
-			} else {
-				vmIP, ok := db.VMs[vm]
-				if !ok {
-					continue
-				}
+				expected.All[u.IP] = ""
+				continue
+			}
+			if vmIP, ok := db.VMs[vm]; ok {
 				entry := u.IP + "," + vmIP
-				matrixExpected[entry] = user + " -> " + vm
+				expected.IPMatrix[entry] = user + " -> " + vm
+				continue
+			}
+			resource, ok := db.Resources[vm]
+			if !ok {
+				continue
+			}
+			vmIP, ok := db.VMs[resource.VM]
+			if !ok {
+				continue
+			}
+			for _, port := range resource.Ports {
+				entry := u.IP + "," + port.String() + "," + vmIP
+				expected.PortMatrix[entry] = fmt.Sprintf("%s -> %s %s/%d", user, vm, port.Protocol, port.Port)
 			}
 		}
 	}
-	return
+	return expected
 }
 
 // reconcileIPSet computes drift and required deltas for one ipset.
@@ -265,10 +294,10 @@ func validateAllAccessIPSet(setname string, parsed *ParsedIPSet) []string {
 	return errs
 }
 
-// validateMatrixIPSet checks that the live matrix set has the correct type
+// validateIPMatrixIPSet checks that the live matrix set has the correct type
 // (hash:net,net) and that all entries are two comma-separated IPv4/net values.
 // Returns hard error strings; an empty slice means validation passed.
-func validateMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
+func validateIPMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
 	var errs []string
 	if parsed.SetName != setname {
 		errs = append(errs, fmt.Sprintf(
@@ -287,6 +316,43 @@ func validateMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
 		if len(parts) != 2 || !isValidIPv4OrCIDR(parts[0]) || !isValidIPv4OrCIDR(parts[1]) {
 			errs = append(errs, fmt.Sprintf(
 				"ipset %q: matrix entry %q is not two valid IPv4/net values", setname, e.Entry))
+		}
+	}
+	return errs
+}
+
+// validatePortMatrixIPSet checks that the live port matrix set has the correct
+// type (hash:ip,port,ip) and that entries are source IP, port, destination IP.
+func validatePortMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
+	var errs []string
+	if parsed.SetName != setname {
+		errs = append(errs, fmt.Sprintf(
+			"ipset %q output describes set %q, expected %q",
+			setname, parsed.SetName, setname))
+		return errs
+	}
+	if parsed.SetType != "hash:ip,port,ip" {
+		errs = append(errs, fmt.Sprintf(
+			"ipset %q has type %q, expected hash:ip,port,ip (run 'wgman init-ipsets' to recreate)",
+			setname, parsed.SetType))
+		return errs
+	}
+	for _, e := range parsed.Entries {
+		parts := strings.Split(e.Entry, ",")
+		if len(parts) != 3 {
+			errs = append(errs, fmt.Sprintf(
+				"ipset %q: port matrix entry %q is not source-ip,port,destination-ip", setname, e.Entry))
+			continue
+		}
+		src := net.ParseIP(parts[0])
+		dst := net.ParseIP(parts[2])
+		if src == nil || src.To4() == nil || dst == nil || dst.To4() == nil {
+			errs = append(errs, fmt.Sprintf(
+				"ipset %q: port matrix entry %q must use IPv4 source and destination addresses", setname, e.Entry))
+		}
+		if _, err := parseResourcePortScalar(parts[1]); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"ipset %q: port matrix entry %q has invalid port: %s", setname, e.Entry, err))
 		}
 	}
 	return errs

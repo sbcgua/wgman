@@ -52,10 +52,11 @@ func InvertIPSetDeltas(deltas []IpsetDeltaOp) []IpsetDeltaOp {
 	return inverted
 }
 
-func diffExpectedIPSets(cfg *Config, oldAll, oldMatrix, newAll, newMatrix map[string]string) []IpsetDeltaOp {
+func diffExpectedIPSets(cfg *Config, oldExpected, newExpected ExpectedIPSets) []IpsetDeltaOp {
 	var deltas []IpsetDeltaOp
-	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.All, oldAll, newAll)...)
-	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.Matrix, oldMatrix, newMatrix)...)
+	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.All, oldExpected.All, newExpected.All)...)
+	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.IPMatrix, oldExpected.IPMatrix, newExpected.IPMatrix)...)
+	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.PortMatrix, oldExpected.PortMatrix, newExpected.PortMatrix)...)
 	sort.Slice(deltas, func(i, j int) bool {
 		if deltas[i].Set != deltas[j].Set {
 			return deltas[i].Set < deltas[j].Set

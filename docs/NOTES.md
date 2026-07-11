@@ -12,7 +12,8 @@ future changes. They intentionally omit implementation history.
 - `validateDB` is the single home for DB internal consistency checks. `LoadDB`
   converts its returned messages to an error, and `Check` reuses the same
   messages as hard errors before live system validation.
-- User and VM names must match `^[A-Za-z0-9_-]+$`.
+- User and VM names must match `^[A-Za-z0-9_-]+$`; resource names use the
+  separate `^[A-Za-z0-9_@-]+$` pattern so `@` is allowed only for resources.
 - Names are case-sensitive for lookup, but case-only conflicts are rejected
   with simple ASCII folding (`caseFold`).
 - User and VM IPs must be IPv4. IPv6 and non-IP values are hard errors.
@@ -21,7 +22,11 @@ future changes. They intentionally omit implementation history.
   `inactive: true`. Missing `inactive` means active. Deterministic writes omit
   empty comments and omit `inactive` when false.
 - Duplicate user IPs, duplicate public keys, duplicate access entries, and
-  access references to unknown users or VMs are rejected.
+  access references to unknown users or access targets are rejected.
+- VMs and resources share one access-target namespace. Exact and case-only
+  conflicts between VM and resource names are rejected.
+- Resource ports are normalized to explicit `tcp:<port>` or `udp:<port>` pairs;
+  unprefixed ports mean TCP. Duplicate ports are detected after normalization.
 - Access entry `"*"` means all-access/admin and must be the only entry for
   that user.
 - Private keys are never written to `db.yaml`.
@@ -76,16 +81,19 @@ future changes. They intentionally omit implementation history.
 - Parsed ipset `create` names must match the configured set being checked.
 - `add` lines must refer to the same set as the `create` line.
 - All-access set type is `hash:ip`; entries must be one IPv4 value.
-- Matrix set type is `hash:net,net`; entries must be two IPv4 or IPv4/CIDR
+- IP matrix set type is `hash:net,net`; entries must be two IPv4 or IPv4/CIDR
   values separated by a comma.
+- Port matrix set type is `hash:ip,port,ip`; entries must be source IPv4,
+  protocol/port, and destination IPv4.
 - Malformed managed ipset entries are hard errors, not drift to delete.
-- Matrix comments use the format `<username> -> <vmname>`.
+- IP matrix comments use the format `<username> -> <vmname>`. Port matrix
+  comments use `<username> -> <resource> <protocol>/<port>`.
 
 ## Writes And Rollback
 
 - `SaveDBAtomic` writes a same-directory temporary file, chmods it `0600`,
   syncs it, renames it over `db.yaml`, then syncs the config directory.
-- Deterministic DB output sorts users, VMs, and access owners.
+- Deterministic DB output sorts users, VMs, resources, and access owners.
 - Access lists are normalized to sorted, duplicate-free lists before writing;
   users with empty access are omitted from `access`.
 - Generated client configs are written as `<user>.vpn.conf` in the current
@@ -132,8 +140,8 @@ future changes. They intentionally omit implementation history.
   user is already in the requested state.
 - Inactive toggles apply live changes before committing `db.yaml`; failed live
   changes or failed DB commits trigger best-effort live rollback.
-- `list [user]` with no filter prints users with IP/access summaries and VMs.
-  With a user filter it prints that user's access list.
+- `list [user]` with no filter prints users with IP/access summaries, VMs, and
+  resources. With a user filter it prints that user's access list.
 - `list` colorizes access markers on interactive stdout: `none` uses grey and
   `*` uses red. `--no-color` suppresses this.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.

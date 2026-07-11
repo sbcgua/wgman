@@ -42,7 +42,8 @@ func writeValidTestData(h *testHelper, dir string) {
 	h.writeFile(dir, "config.yaml", `interface: wg0
 sets:
   all: wg_allow_all
-  matrix: wg_allow_matrix
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
 `)
 	h.writeFile(dir, "db.yaml", `users:
   admin:
@@ -57,6 +58,7 @@ sets:
 vms:
   sandbox: 192.168.122.100
   mailvm: 192.168.122.101
+resources: {}
 access:
   admin:
     - "*"

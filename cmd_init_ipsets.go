@@ -5,7 +5,7 @@ import (
 )
 
 // cmdInitIPSets implements "wgman init-ipsets".
-// It creates the two managed ipsets defined in config.yaml using idempotent
+// It creates the managed ipsets defined in config.yaml using idempotent
 // creation (-exist), so re-running the command on an already-configured host
 // is safe.  It does not populate any access entries.
 func cmdInitIPSets(gf *globalFlags, args []string, app *App) int {
@@ -34,12 +34,19 @@ func cmdInitIPSets(gf *globalFlags, args []string, app *App) int {
 	}
 	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:ip)\n", cfg.Sets.All)
 
-	// Matrix set: pairs of source/destination IPv4 networks with comments.
-	if err := app.Sys.IPSetCreate(cfg.Sets.Matrix, "hash:net,net", true); err != nil {
+	// IP matrix set: pairs of source/destination IPv4 networks with comments.
+	if err := app.Sys.IPSetCreate(cfg.Sets.IPMatrix, "hash:net,net", true); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
-	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:net,net)\n", cfg.Sets.Matrix)
+	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:net,net)\n", cfg.Sets.IPMatrix)
+
+	// Port matrix set: source IPv4, destination port, destination IPv4 triples.
+	if err := app.Sys.IPSetCreate(cfg.Sets.PortMatrix, "hash:ip,port,ip", true); err != nil {
+		fmt.Fprintln(app.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:ip,port,ip)\n", cfg.Sets.PortMatrix)
 
 	fmt.Fprintln(app.Stdout, "init-ipsets: OK")
 	return 0

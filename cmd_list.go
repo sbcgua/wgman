@@ -74,8 +74,31 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
+	fmt.Fprintln(stdout, "")
+	fmt.Fprintln(stdout, "Resources:")
+	if len(db.Resources) == 0 {
+		fmt.Fprintln(stdout, "  (none)")
+	} else {
+		for _, name := range sortedKeys(db.Resources) {
+			resource := db.Resources[name]
+			fmt.Fprintf(stdout, "  %-20s %s %s\n", name, resource.VM, formatResourcePorts(resource.Ports))
+		}
+	}
+
 	// fmt.Fprintln(stdout, "list: OK")
 	return 0
+}
+
+func formatResourcePorts(ports ResourcePorts) string {
+	if len(ports) == 0 {
+		return "(none)"
+	}
+	parts := make([]string, 0, len(ports))
+	for _, port := range ports {
+		parts = append(parts, port.String())
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }
 
 func formatAccessSummary(vms []string, color bool) string {

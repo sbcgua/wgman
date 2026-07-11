@@ -128,7 +128,7 @@ func parseCreateAccessList(s string) ([]string, error) {
 		if part == "" {
 			return nil, fmt.Errorf("empty access entry")
 		}
-		if part != "*" && !nameRe.MatchString(part) {
+		if part != "*" && !resourceNameRe.MatchString(part) {
 			return nil, fmt.Errorf("invalid resource name %q", part)
 		}
 		if seen[part] {
@@ -316,9 +316,9 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, sys SystemAdapter) (*
 		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
-	oldAll, oldMatrix := computeExpectedIPSets(db)
-	newAll, newMatrix := computeExpectedIPSets(updated)
-	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
+	oldExpected := computeExpectedIPSets(db)
+	newExpected := computeExpectedIPSets(updated)
+	deltas := diffExpectedIPSets(cfg, oldExpected, newExpected)
 	return &createPlan{
 		UpdatedDB:   updated,
 		IPSetDeltas: deltas,

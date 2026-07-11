@@ -40,6 +40,24 @@ func TestRunList_NoFilterUserWithNoAccess(t *testing.T) {
 	}
 }
 
+func TestRunList_ShowsResources(t *testing.T) {
+	db := makeResourceDB()
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	for _, want := range []string{"Resources:", "dns@mailvm", "mailvm", "udp:53", "ssh@sandbox", "sandbox", "tcp:22"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in list output, got:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "(dns@mailvm,ssh@sandbox)") {
+		t.Errorf("expected mixed resource access summary, got:\n%s", out)
+	}
+}
+
 func TestRunList_ColorizesAccessSummaryMarkers(t *testing.T) {
 	db := makeTestDB()
 	db.Users["newguy"] = UserEntry{IP: "10.8.0.20", Pub: "NEWGUY_PUB="}
