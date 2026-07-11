@@ -62,6 +62,8 @@ func printPeerDeltas(deltas []WGPeerDeltaOp, w io.Writer) {
 	}
 }
 
+// printApplyAndRollbackError writes the primary failure and, when present,
+// includes rollback failure details on the same error line.
 func printApplyAndRollbackError(w io.Writer, err, rollbackErr error) {
 	if rollbackErr != nil {
 		fmt.Fprintf(w, "error: %v (rollback failed: %v)\n", err, rollbackErr)
@@ -70,6 +72,7 @@ func printApplyAndRollbackError(w io.Writer, err, rollbackErr error) {
 	fmt.Fprintln(w, "error:", err)
 }
 
+// printRemovePlan writes the confirmation summary for a planned user removal.
 func printRemovePlan(plan *removePlan, w io.Writer) {
 	fmt.Fprintf(w, "remove: planned removal of %s (%s)\n", plan.User, plan.IP)
 	if len(plan.Access) == 0 {
