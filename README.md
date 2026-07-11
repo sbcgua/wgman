@@ -118,9 +118,11 @@ The repository includes an optional `iptables` hook template at [share/usr/local
 Review and edit the variables at the top of the template before installing it, especially:
 
 - `IPTABLES` and `IPSET`
-- `WG_IFACE`
-- `VM_IFACE`
-- `SET_ALL`, `SET_IP_MATRIX`, and `SET_PORT_MATRIX`
+- `CONFIG_FILE`, if your `config.yaml` is not in `/etc/wireguard/wgman/config.yaml`
+- `WG_IFACE`, if you want to override the interface from `config.yaml`
+- `VM_IFACE`; use an `iptables` interface wildcard such as `virbr+` if the
+  same rules should apply to several VM bridges like `virbr0` and `virbr1`
+- `SET_ALL`, `SET_IP_MATRIX`, and `SET_PORT_MATRIX`, if you want to override the managed set names from `config.yaml`
 - `CHAIN_INP` and `CHAIN_FWD`
 
 Install it manually after review:
@@ -148,6 +150,12 @@ The script manages only its dedicated `iptables` chains and parent jump rules. I
 
 ```sh
 sudo /usr/local/sbin/wgman-firewall-hook reassert
+```
+
+To inspect the effective hook variables after reading `config.yaml`:
+
+```sh
+/usr/local/sbin/wgman-firewall-hook print
 ```
 
 The template is IPv4-only and uses `iptables`/`ipset`. Hosts using nftables or IPv6 should adapt the template manually.

@@ -65,23 +65,33 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 
 	fmt.Fprintln(stdout, "Users:")
 	for _, name := range sortedKeys(db.Users) {
-		fmt.Fprintf(stdout, "  %-20s %-15s %s\n", name, db.Users[name].IP, formatAccessSummary(db.Access[name], color))
+		u := db.Users[name]
+		nameCell := showUserNameCell(name, u.Inactive, color)
+		fmt.Fprintf(stdout, "  %s%s %-15s %s\n", nameCell.display, paddingFor(nameCell.plain, 20), u.IP, formatAccessSummary(db, db.Access[name], color))
 	}
 
 	fmt.Fprintln(stdout, "")
-	fmt.Fprintln(stdout, "VMs:")
+	fmt.Fprintln(stdout, formatSectionHeader("VMs", color))
 	for _, name := range sortedKeys(db.VMs) {
 		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
 	fmt.Fprintln(stdout, "")
-	fmt.Fprintln(stdout, "Resources:")
+	fmt.Fprintln(stdout, formatSectionHeader("Resources", color))
 	if len(db.Resources) == 0 {
 		fmt.Fprintln(stdout, "  (none)")
 	} else {
-		for _, name := range sortedKeys(db.Resources) {
+		names := sortedKeys(db.Resources)
+		nameWidth := maxWidth(names, 20)
+		vmWidth := 0
+		for _, name := range names {
+			if len(db.Resources[name].VM) > vmWidth {
+				vmWidth = len(db.Resources[name].VM)
+			}
+		}
+		for _, name := range names {
 			resource := db.Resources[name]
-			fmt.Fprintf(stdout, "  %-20s %s %s\n", name, resource.VM, formatResourcePorts(resource.Ports))
+			fmt.Fprintf(stdout, "  %-*s %-*s %s\n", nameWidth, name, vmWidth, resource.VM, formatResourcePorts(resource.Ports, false))
 		}
 	}
 
@@ -89,32 +99,90 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 	return 0
 }
 
-func formatResourcePorts(ports ResourcePorts) string {
+func paddingFor(s string, width int) string {
+	if len(s) >= width {
+		return ""
+	}
+	return strings.Repeat(" ", width-len(s))
+}
+
+func maxWidth(values []string, minimum int) int {
+	width := minimum
+	for _, value := range values {
+		if len(value) > width {
+			width = len(value)
+		}
+	}
+	return width
+}
+
+func formatSectionHeader(label string, color bool) string {
+	if !color {
+		return label + ":"
+	}
+	switch label {
+	case "VMs":
+		return colorYellow(label + ":")
+	case "Resources":
+		return colorLightBlue(label + ":")
+	default:
+		return label + ":"
+	}
+}
+
+func formatResourcePorts(ports ResourcePorts, color bool) string {
 	if len(ports) == 0 {
 		return "(none)"
 	}
+	byProtocol := make(map[string][]int)
+	for _, port := range ports {
+		byProtocol[port.Protocol] = append(byProtocol[port.Protocol], port.Port)
+	}
+	protocols := sortedKeys(byProtocol)
+	groups := make([]string, 0, len(protocols))
+	for _, protocol := range protocols {
+		sort.Ints(byProtocol[protocol])
+		groups = append(groups, formatResourcePortGroup(protocol, byProtocol[protocol], color))
+	}
+	return strings.Join(groups, " ")
+}
+
+func formatResourcePortGroup(protocol string, ports []int, color bool) string {
+	prefix := protocol + ":"
+	if !color {
+		return prefix + joinPorts(ports)
+	}
+	switch protocol {
+	case "tcp":
+		prefix = colorPink(prefix)
+	case "udp":
+		prefix = colorCyan(prefix)
+	}
+	return prefix + joinPorts(ports)
+}
+
+func joinPorts(ports []int) string {
 	parts := make([]string, 0, len(ports))
 	for _, port := range ports {
-		parts = append(parts, port.String())
+		parts = append(parts, fmt.Sprint(port))
 	}
-	sort.Strings(parts)
 	return strings.Join(parts, ",")
 }
 
-func formatAccessSummary(vms []string, color bool) string {
+func formatAccessSummary(db *DB, vms []string, color bool) string {
 	if len(vms) == 0 {
-		return "(" + colorAccessItem("none", color) + ")"
+		return "(" + colorAccessItem(db, "none", color) + ")"
 	}
 	sorted := make([]string, len(vms))
 	copy(sorted, vms)
 	sort.Strings(sorted)
 	for i, vm := range sorted {
-		sorted[i] = colorAccessItem(vm, color)
+		sorted[i] = colorAccessItem(db, vm, color)
 	}
 	return "(" + strings.Join(sorted, ",") + ")"
 }
 
-func colorAccessItem(item string, color bool) string {
+func colorAccessItem(db *DB, item string, color bool) string {
 	if !color {
 		return item
 	}
@@ -124,23 +192,31 @@ func colorAccessItem(item string, color bool) string {
 	case "*":
 		return colorRed(item)
 	default:
+		if _, ok := db.VMs[item]; ok {
+			return colorYellow(item)
+		}
+		if _, ok := db.Resources[item]; ok {
+			return colorLightBlue(item)
+		}
 		return item
 	}
 }
 
 // runListUser prints the access list for a single named user.
 func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) int {
-	if _, ok := db.Users[filter]; !ok {
+	u, ok := db.Users[filter]
+	if !ok {
 		fmt.Fprintf(stderr, "error: user %q not found\n", filter)
 		fmt.Fprintln(stderr, "list: FAILED")
 		return 1
 	}
 
 	vms := db.Access[filter]
-	fmt.Fprintf(stdout, "%s:\n", filter)
+	nameCell := showUserNameCell(filter, u.Inactive, color)
+	fmt.Fprintf(stdout, "%s:\n", nameCell.display)
 	if len(vms) == 0 {
-		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem("none", color))
-		fmt.Fprintln(stdout, "list: OK")
+		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem(db, "none", color))
+		// fmt.Fprintln(stdout, "list: OK")
 		return 0
 	}
 
@@ -148,8 +224,8 @@ func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) in
 	copy(sorted, vms)
 	sort.Strings(sorted)
 	for _, vm := range sorted {
-		fmt.Fprintf(stdout, "  %s\n", colorAccessItem(vm, color))
+		fmt.Fprintf(stdout, "  %s\n", colorAccessItem(db, vm, color))
 	}
-	fmt.Fprintln(stdout, "list: OK")
+	// fmt.Fprintln(stdout, "list: OK")
 	return 0
 }

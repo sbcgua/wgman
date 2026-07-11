@@ -41,6 +41,10 @@ future changes. They intentionally omit implementation history.
 - Root checks belong in command handlers. Core routines such as `Check` remain
   root-agnostic and fakeable.
 - The CLI dependency-injection boundary is `App` in `cli.go`.
+- `share/usr/local/sbin/wgman-firewall-hook.template` reads `interface` and
+  managed set names from the simple `config.yaml` shape with an embedded
+  `awk` parser. It intentionally avoids a `yq` dependency and is not a general
+  YAML parser.
 
 ## Check And Drift Policy
 
