@@ -27,7 +27,8 @@ the current state without relying on chat history.
 - Phase 2 implementation completed and review findings are resolved.
 - Phase 3 implementation completed, reviewed, and verified.
 - Phase 4 implementation completed, reviewed, and verified.
-- Phase 5 implementation completed, reviewed, verified, and ready to commit.
+- Phase 5 implementation completed, reviewed, verified, and committed.
+- Phase 5 follow-up ordering fix completed and ready to commit.
 
 ## Decisions Captured
 
@@ -210,4 +211,16 @@ the current state without relying on chat history.
 - High-reasoning review agent `Ampere` found no Phase 5 issues. Residual risk:
   real `wg`/`ipset` mutation paths are covered by code review and fake-system
   tests but not exercised against real Linux tools in this environment.
-- Next step after commit: start Phase 6 with a medium-reasoning worker agent.
+- Phase 5 committed as `237140d`.
+- The original Phase 5 worker was interrupted after the commit. A replacement
+  medium-reasoning worker `Boyle` inspected the current state, kept the patch
+  structure, and made one parity fix: `diff_expected_ipsets` now sorts delete
+  operations before add operations for matching set/entry keys, matching the
+  Go comparator. A regression test covers the ordering.
+- Follow-up checks passed:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- Next step after the follow-up fix commit: start Phase 6 with a
+  medium-reasoning worker agent.

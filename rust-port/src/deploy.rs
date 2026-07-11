@@ -77,7 +77,7 @@ pub fn diff_expected_ipsets(
         &old_expected.port_matrix,
         &new_expected.port_matrix,
     ));
-    deltas.sort_by(|a, b| (&a.set, &a.entry, !a.add).cmp(&(&b.set, &b.entry, !b.add)));
+    deltas.sort_by(|a, b| (&a.set, &a.entry, a.add).cmp(&(&b.set, &b.entry, b.add)));
     deltas
 }
 

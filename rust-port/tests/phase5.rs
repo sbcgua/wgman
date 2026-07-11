@@ -184,6 +184,37 @@ fn diff_expected_ipsets_builds_stable_deltas() {
 }
 
 #[test]
+fn diff_expected_ipsets_orders_deletes_before_adds_for_matching_keys() {
+    let shared_entry = "10.8.0.10,192.168.122.100";
+    let old_expected = ExpectedIPSets {
+        all: HashMap::from([(shared_entry.to_string(), "old comment".to_string())]),
+        ..ExpectedIPSets::default()
+    };
+    let new_expected = ExpectedIPSets {
+        ip_matrix: HashMap::from([(shared_entry.to_string(), "alice -> sandbox".to_string())]),
+        ..ExpectedIPSets::default()
+    };
+    let config = Config {
+        interface: "wg0".to_string(),
+        sets: ConfigSets {
+            all: "same_set".to_string(),
+            ip_matrix: "same_set".to_string(),
+            port_matrix: "port_set".to_string(),
+        },
+    };
+
+    let got = diff_expected_ipsets(&config, &old_expected, &new_expected);
+
+    assert_eq!(
+        got,
+        [
+            ipset_delta("same_set", shared_entry, "old comment", false),
+            ipset_delta("same_set", shared_entry, "alice -> sandbox", true),
+        ]
+    );
+}
+
+#[test]
 fn diff_expected_ipset_no_changes() {
     let expected = HashMap::from([(
         "10.8.0.10,192.168.122.100".to_string(),
