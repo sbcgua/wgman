@@ -78,6 +78,31 @@ func TestRunList_ColorizesAccessSummaryMarkers(t *testing.T) {
 	}
 }
 
+func TestRunList_ColorizesAccessTargetsAndSectionHeaders(t *testing.T) {
+	db := makeResourceDB()
+	var buf strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "("+ansiLightBlue+"dns@mailvm"+ansiReset+","+ansiLightBlue+"ssh@sandbox"+ansiReset+")") {
+		t.Errorf("expected light blue resources in access summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "("+ansiYellow+"mailvm"+ansiReset+","+ansiYellow+"sandbox"+ansiReset+")") {
+		t.Errorf("expected yellow VMs in access summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, ansiYellow+"VMs:"+ansiReset) {
+		t.Errorf("expected yellow VMs section header, got:\n%s", out)
+	}
+	if !strings.Contains(out, ansiLightBlue+"Resources:"+ansiReset) {
+		t.Errorf("expected light blue Resources section header, got:\n%s", out)
+	}
+	if strings.Contains(out, ansiLightBlue+"dns@mailvm"+ansiReset+" ") {
+		t.Errorf("resource section row names should remain plain, got:\n%s", out)
+	}
+}
+
 func TestRunList_InactiveUserNameSuffixNoColor(t *testing.T) {
 	db := makeTestDB()
 	bob := db.Users["bob"]
@@ -140,6 +165,30 @@ func TestRunList_FilterColorizesAccessMarkers(t *testing.T) {
 	}
 }
 
+func TestRunList_FilterColorizesAccessTargets(t *testing.T) {
+	db := makeResourceDB()
+
+	var alice strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "alice", &alice, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("alice list code = %d, want 0", code)
+	}
+	if !strings.Contains(alice.String(), ansiLightBlue+"dns@mailvm"+ansiReset) ||
+		!strings.Contains(alice.String(), ansiLightBlue+"ssh@sandbox"+ansiReset) {
+		t.Errorf("expected light blue resources in filtered output, got:\n%s", alice.String())
+	}
+
+	var bob strings.Builder
+	code = runListWithColor(db, &CheckResult{}, "bob", &bob, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("bob list code = %d, want 0", code)
+	}
+	if !strings.Contains(bob.String(), ansiYellow+"mailvm"+ansiReset) ||
+		!strings.Contains(bob.String(), ansiYellow+"sandbox"+ansiReset) {
+		t.Errorf("expected yellow VMs in filtered output, got:\n%s", bob.String())
+	}
+}
+
 func TestRunList_FilterInactiveUserNameGreyWithColor(t *testing.T) {
 	db := makeTestDB()
 	bob := db.Users["bob"]
@@ -160,7 +209,7 @@ func TestRunList_FilterInactiveUserNameGreyWithColor(t *testing.T) {
 	}
 }
 
-func TestRunList_ColorizesResourcePortPrefixes(t *testing.T) {
+func TestRunList_GroupsResourcePortsWithoutColoringResourceRows(t *testing.T) {
 	db := makeResourceDB()
 	db.Resources["dns@mailvm"] = ResourceEntry{
 		VM: "mailvm",
@@ -176,17 +225,58 @@ func TestRunList_ColorizesResourcePortPrefixes(t *testing.T) {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	out := buf.String()
-	if !strings.Contains(out, ansiPink+"tcp:"+ansiReset+"8080,8081") {
-		t.Errorf("expected pink tcp prefix, got:\n%s", out)
+	if strings.Contains(out, ansiPink+"tcp:"+ansiReset) || strings.Contains(out, ansiCyan+"udp:"+ansiReset) {
+		t.Errorf("resource section port prefixes should remain plain, got:\n%s", out)
 	}
-	if !strings.Contains(out, ansiCyan+"udp:"+ansiReset+"53") {
-		t.Errorf("expected cyan udp prefix, got:\n%s", out)
+	if !strings.Contains(out, "tcp:8080,8081 udp:53") {
+		t.Errorf("expected grouped sorted ports, got:\n%s", out)
 	}
-	if !strings.Contains(stripANSI(out), "tcp:8080,8081 udp:53") {
-		t.Errorf("expected grouped sorted ports after stripping ANSI, got:\n%s", stripANSI(out))
+	if strings.Contains(out, "8081,udp") {
+		t.Errorf("expected space, not comma, between protocol groups, got:\n%s", out)
 	}
-	if strings.Contains(stripANSI(out), "8081,udp") {
-		t.Errorf("expected space, not comma, between protocol groups, got:\n%s", stripANSI(out))
+}
+
+func TestRunList_AlignsResourcePorts(t *testing.T) {
+	db := makeResourceDB()
+	db.Resources["longer-resource-name@mailvm"] = ResourceEntry{
+		VM:    "mailvm",
+		Ports: ResourcePorts{{Protocol: "tcp", Port: 443}},
+	}
+
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+
+	var portColumns []int
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, "tcp:") || strings.Contains(line, "udp:") {
+			portColumns = append(portColumns, firstPortColumn(line))
+		}
+	}
+	if len(portColumns) < 2 {
+		t.Fatalf("expected at least two resource rows with ports, got:\n%s", buf.String())
+	}
+	for _, column := range portColumns[1:] {
+		if column != portColumns[0] {
+			t.Fatalf("resource port columns = %v, want all equal; output:\n%s", portColumns, buf.String())
+		}
+	}
+}
+
+func firstPortColumn(line string) int {
+	tcp := strings.Index(line, "tcp:")
+	udp := strings.Index(line, "udp:")
+	switch {
+	case tcp < 0:
+		return udp
+	case udp < 0:
+		return tcp
+	case tcp < udp:
+		return tcp
+	default:
+		return udp
 	}
 }
 

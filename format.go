@@ -8,13 +8,15 @@ import (
 )
 
 const (
-	ansiReset   = "\x1b[0m"
-	ansiGrey    = "\x1b[90m"
-	ansiRed     = "\x1b[31m"
-	ansiGreen   = "\x1b[32m"
-	ansiCyan    = "\x1b[36m"
-	ansiPink    = "\x1b[95m"
-	ansiDimCyan = "\x1b[2;36m"
+	ansiReset     = "\x1b[0m"
+	ansiGrey      = "\x1b[90m"
+	ansiRed       = "\x1b[31m"
+	ansiGreen     = "\x1b[32m"
+	ansiYellow    = "\x1b[33m"
+	ansiCyan      = "\x1b[36m"
+	ansiLightBlue = "\x1b[94m"
+	ansiPink      = "\x1b[95m"
+	ansiDimCyan   = "\x1b[2;36m"
 )
 
 func colorGrey(s string) string {
@@ -29,8 +31,16 @@ func colorGreen(s string) string {
 	return ansiGreen + s + ansiReset
 }
 
+func colorYellow(s string) string {
+	return ansiYellow + s + ansiReset
+}
+
 func colorCyan(s string) string {
 	return ansiCyan + s + ansiReset
+}
+
+func colorLightBlue(s string) string {
+	return ansiLightBlue + s + ansiReset
 }
 
 func colorPink(s string) string {

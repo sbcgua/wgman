@@ -67,23 +67,31 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 	for _, name := range sortedKeys(db.Users) {
 		u := db.Users[name]
 		nameCell := showUserNameCell(name, u.Inactive, color)
-		fmt.Fprintf(stdout, "  %s%s %-15s %s\n", nameCell.display, paddingFor(nameCell.plain, 20), u.IP, formatAccessSummary(db.Access[name], color))
+		fmt.Fprintf(stdout, "  %s%s %-15s %s\n", nameCell.display, paddingFor(nameCell.plain, 20), u.IP, formatAccessSummary(db, db.Access[name], color))
 	}
 
 	fmt.Fprintln(stdout, "")
-	fmt.Fprintln(stdout, "VMs:")
+	fmt.Fprintln(stdout, formatSectionHeader("VMs", color))
 	for _, name := range sortedKeys(db.VMs) {
 		fmt.Fprintf(stdout, "  %-20s %s\n", name, db.VMs[name])
 	}
 
 	fmt.Fprintln(stdout, "")
-	fmt.Fprintln(stdout, "Resources:")
+	fmt.Fprintln(stdout, formatSectionHeader("Resources", color))
 	if len(db.Resources) == 0 {
 		fmt.Fprintln(stdout, "  (none)")
 	} else {
-		for _, name := range sortedKeys(db.Resources) {
+		names := sortedKeys(db.Resources)
+		nameWidth := maxWidth(names, 20)
+		vmWidth := 0
+		for _, name := range names {
+			if len(db.Resources[name].VM) > vmWidth {
+				vmWidth = len(db.Resources[name].VM)
+			}
+		}
+		for _, name := range names {
 			resource := db.Resources[name]
-			fmt.Fprintf(stdout, "  %-20s %s %s\n", name, resource.VM, formatResourcePorts(resource.Ports, color))
+			fmt.Fprintf(stdout, "  %-*s %-*s %s\n", nameWidth, name, vmWidth, resource.VM, formatResourcePorts(resource.Ports, false))
 		}
 	}
 
@@ -96,6 +104,30 @@ func paddingFor(s string, width int) string {
 		return ""
 	}
 	return strings.Repeat(" ", width-len(s))
+}
+
+func maxWidth(values []string, minimum int) int {
+	width := minimum
+	for _, value := range values {
+		if len(value) > width {
+			width = len(value)
+		}
+	}
+	return width
+}
+
+func formatSectionHeader(label string, color bool) string {
+	if !color {
+		return label + ":"
+	}
+	switch label {
+	case "VMs":
+		return colorYellow(label + ":")
+	case "Resources":
+		return colorLightBlue(label + ":")
+	default:
+		return label + ":"
+	}
 }
 
 func formatResourcePorts(ports ResourcePorts, color bool) string {
@@ -137,20 +169,20 @@ func joinPorts(ports []int) string {
 	return strings.Join(parts, ",")
 }
 
-func formatAccessSummary(vms []string, color bool) string {
+func formatAccessSummary(db *DB, vms []string, color bool) string {
 	if len(vms) == 0 {
-		return "(" + colorAccessItem("none", color) + ")"
+		return "(" + colorAccessItem(db, "none", color) + ")"
 	}
 	sorted := make([]string, len(vms))
 	copy(sorted, vms)
 	sort.Strings(sorted)
 	for i, vm := range sorted {
-		sorted[i] = colorAccessItem(vm, color)
+		sorted[i] = colorAccessItem(db, vm, color)
 	}
 	return "(" + strings.Join(sorted, ",") + ")"
 }
 
-func colorAccessItem(item string, color bool) string {
+func colorAccessItem(db *DB, item string, color bool) string {
 	if !color {
 		return item
 	}
@@ -160,6 +192,12 @@ func colorAccessItem(item string, color bool) string {
 	case "*":
 		return colorRed(item)
 	default:
+		if _, ok := db.VMs[item]; ok {
+			return colorYellow(item)
+		}
+		if _, ok := db.Resources[item]; ok {
+			return colorLightBlue(item)
+		}
 		return item
 	}
 }
@@ -177,8 +215,8 @@ func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) in
 	nameCell := showUserNameCell(filter, u.Inactive, color)
 	fmt.Fprintf(stdout, "%s:\n", nameCell.display)
 	if len(vms) == 0 {
-		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem("none", color))
-		fmt.Fprintln(stdout, "list: OK")
+		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem(db, "none", color))
+		// fmt.Fprintln(stdout, "list: OK")
 		return 0
 	}
 
@@ -186,8 +224,8 @@ func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) in
 	copy(sorted, vms)
 	sort.Strings(sorted)
 	for _, vm := range sorted {
-		fmt.Fprintf(stdout, "  %s\n", colorAccessItem(vm, color))
+		fmt.Fprintf(stdout, "  %s\n", colorAccessItem(db, vm, color))
 	}
-	fmt.Fprintln(stdout, "list: OK")
+	// fmt.Fprintln(stdout, "list: OK")
 	return 0
 }
