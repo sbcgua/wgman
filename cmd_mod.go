@@ -11,6 +11,13 @@ type modAccessOp struct {
 	Resource string
 }
 
+type modAccessPlan struct {
+	UpdatedDB     *DB
+	IPSetDeltas   []IpsetDeltaOp
+	User          string
+	AccessChanged bool
+}
+
 type modTogglePlan struct {
 	UpdatedDB   *DB
 	IPSetDeltas []IpsetDeltaOp
@@ -86,27 +93,26 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 2
 	}
 
-	updatedDb, ipsetDeltas, err := planModAccess(cfg, db, args[0], ops)
+	plan, err := planModAccess(cfg, db, args[0], ops)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	dbChanged := !slices.Equal(db.Access[args[0]], updatedDb.Access[args[0]])
-	if len(ipsetDeltas) == 0 && !dbChanged {
+	if len(plan.IPSetDeltas) == 0 && !plan.AccessChanged {
 		fmt.Fprintln(app.Stdout, "mod: no changes needed")
 		return 0
 	}
 
-	changeCount := len(ipsetDeltas)
-	if dbChanged && len(ipsetDeltas) == 0 {
+	changeCount := len(plan.IPSetDeltas)
+	if plan.AccessChanged && len(plan.IPSetDeltas) == 0 {
 		changeCount = 1
 	}
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
-	if len(ipsetDeltas) > 0 {
-		printIPSetDeltas(ipsetDeltas, app.Stdout)
+	if len(plan.IPSetDeltas) > 0 {
+		printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
 	} else {
-		fmt.Fprintf(app.Stdout, "  update db access for %s\n", args[0])
+		fmt.Fprintf(app.Stdout, "  update db access for %s\n", plan.User)
 	}
 
 	if gf.dryRun {
@@ -114,11 +120,11 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 0
 	}
 
-	if err := saveDBAtomic(gf.configDir, updatedDb); err != nil {
+	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
-	if err := ApplyIPSetDeltas(ipsetDeltas, app.Sys); err != nil {
+	if err := ApplyIPSetDeltas(plan.IPSetDeltas, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
@@ -231,12 +237,12 @@ func rollbackModToggleLive(iface string, applied AppliedStateDeltas, sys SystemA
 	return RollbackStateDeltas(iface, applied, sys)
 }
 
-func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []IpsetDeltaOp, error) {
+func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAccessPlan, error) {
 	if !nameRe.MatchString(user) {
-		return nil, nil, fmt.Errorf("invalid user name %q", user)
+		return nil, fmt.Errorf("invalid user name %q", user)
 	}
 	if _, ok := db.Users[user]; !ok {
-		return nil, nil, fmt.Errorf("user %q not found", user)
+		return nil, fmt.Errorf("user %q not found", user)
 	}
 
 	updatedDb := cloneDB(db)
@@ -248,7 +254,7 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 	for _, op := range ops {
 		if op.Resource != "*" {
 			if _, ok := updatedDb.VMs[op.Resource]; !ok {
-				return nil, nil, fmt.Errorf("unknown VM %q", op.Resource)
+				return nil, fmt.Errorf("unknown VM %q", op.Resource)
 			}
 		}
 		if op.Add {
@@ -261,11 +267,15 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 	updatedDb.Access[user] = normalizeAccessSet(accessSet)
 	normalizeDBAccess(updatedDb)
 	if errs := validateDB(updatedDb); len(errs) > 0 {
-		return nil, nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
+		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
 	newAll, newMatrix := computeExpectedIPSets(updatedDb)
-	ipsetDeltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
-	return updatedDb, ipsetDeltas, nil
+	return &modAccessPlan{
+		UpdatedDB:     updatedDb,
+		IPSetDeltas:   diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
+		User:          user,
+		AccessChanged: !slices.Equal(db.Access[user], updatedDb.Access[user]),
+	}, nil
 }

@@ -118,6 +118,9 @@ future changes. They intentionally omit implementation history.
   edits are manual `db.yaml` edits.
 - `deploy`, `remove`, and `mod` print planned deltas before applying or
   reporting dry-run results.
+- Command-level planning helpers return plan structs rather than parallel
+  result values. Plans use `IPSetDeltas` and `PeerDeltas` field names for live
+  system changes.
 - `deploy` applies WireGuard peer additions, then ipset deltas, then
   WireGuard peer removals. Activation repair therefore restores the peer before
   access entries, and inactive cleanup deletes managed ipset entries before

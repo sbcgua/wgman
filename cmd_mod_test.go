@@ -63,19 +63,25 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 		{Add: true, Resource: "mailvm"},
 		{Add: false, Resource: "sandbox"},
 	}
-	updated, deltas, err := planModAccess(cfg, db, "alice", ops)
+	plan, err := planModAccess(cfg, db, "alice", ops)
 	if err != nil {
 		t.Fatalf("planModAccess: %v", err)
 	}
-	if got := strings.Join(updated.Access["alice"], ","); got != "mailvm" {
+	if plan.User != "alice" {
+		t.Errorf("plan user = %q, want alice", plan.User)
+	}
+	if !plan.AccessChanged {
+		t.Error("plan AccessChanged = false, want true")
+	}
+	if got := strings.Join(plan.UpdatedDB.Access["alice"], ","); got != "mailvm" {
 		t.Errorf("updated alice access = %q, want mailvm", got)
 	}
-	if len(deltas) != 2 {
-		t.Fatalf("len(deltas) = %d, want 2: %+v", len(deltas), deltas)
+	if len(plan.IPSetDeltas) != 2 {
+		t.Fatalf("len(ipset deltas) = %d, want 2: %+v", len(plan.IPSetDeltas), plan.IPSetDeltas)
 	}
 	wantAdd := false
 	wantDel := false
-	for _, delta := range deltas {
+	for _, delta := range plan.IPSetDeltas {
 		if delta.Add && delta.Entry == "10.8.0.10,192.168.122.101" && delta.Comment == "alice -> mailvm" {
 			wantAdd = true
 		}
@@ -84,7 +90,7 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 		}
 	}
 	if !wantAdd || !wantDel {
-		t.Errorf("missing expected add/delete deltas: %+v", deltas)
+		t.Errorf("missing expected add/delete deltas: %+v", plan.IPSetDeltas)
 	}
 }
 
