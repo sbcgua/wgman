@@ -121,7 +121,18 @@ where
                 stdout,
                 stderr,
             ),
-            "create" | "add" | "remove" | "mod" => unsupported_command(command, stderr),
+            "create" | "add" => {
+                commands::create::cmd_create(&parsed.flags, &parsed.args, self, stdout, stderr)
+            }
+            "remove" => commands::remove::cmd_remove(
+                &parsed.flags,
+                &parsed.args,
+                self,
+                stdin,
+                stdout,
+                stderr,
+            ),
+            "mod" => commands::modify::cmd_mod(&parsed.flags, &parsed.args, self, stdout, stderr),
             other => {
                 let _ = writeln!(
                     stderr,
@@ -371,14 +382,6 @@ pub fn reject_unsupported_dry_run<W: Write>(
     }
     let _ = writeln!(stderr, "error: {command} does not support --dry-run");
     true
-}
-
-fn unsupported_command<W: Write>(command: &str, stderr: &mut W) -> i32 {
-    let _ = writeln!(
-        stderr,
-        "error: {command} is not implemented in this Rust port phase"
-    );
-    2
 }
 
 pub fn main_entry<I>(args: I) -> ExitCode

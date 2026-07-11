@@ -13,10 +13,15 @@ pub struct FakeSystem {
     pub ipset_errors: std::collections::HashMap<String, String>,
     pub ipset_create_error: Option<String>,
     pub ipset_add_error: Option<String>,
+    pub ipset_add_errors: std::collections::HashMap<String, String>,
     pub ipset_del_error: Option<String>,
     pub ipset_del_errors: std::collections::HashMap<String, String>,
     pub wg_set_error: Option<String>,
     pub wg_del_error: Option<String>,
+    pub gen_key_result: String,
+    pub gen_key_error: Option<String>,
+    pub pub_key_result: String,
+    pub pub_key_error: Option<String>,
     pub applied_ops: std::cell::RefCell<Vec<String>>,
 }
 
@@ -78,6 +83,9 @@ impl SystemAdapter for FakeSystem {
         if let Some(err) = &self.ipset_add_error {
             return Err(err.clone());
         }
+        if let Some(err) = self.ipset_add_errors.get(&format!("{set_name}:{entry}")) {
+            return Err(err.clone());
+        }
         self.applied_ops
             .borrow_mut()
             .push(format!("add:{set_name}:{entry}:{comment}"));
@@ -115,5 +123,21 @@ impl SystemAdapter for FakeSystem {
             .borrow_mut()
             .push(format!("wgdel:{iface}:{pub_key}"));
         Ok(())
+    }
+
+    fn wg_gen_key(&self) -> Result<String, String> {
+        match &self.gen_key_error {
+            Some(err) => Err(err.clone()),
+            None if !self.gen_key_result.is_empty() => Ok(self.gen_key_result.clone()),
+            None => Ok("FAKE_PRIVATE_KEY".to_string()),
+        }
+    }
+
+    fn wg_pub_key(&self, _private_key: &str) -> Result<String, String> {
+        match &self.pub_key_error {
+            Some(err) => Err(err.clone()),
+            None if !self.pub_key_result.is_empty() => Ok(self.pub_key_result.clone()),
+            None => Ok("FAKE_PUBLIC_KEY".to_string()),
+        }
     }
 }

@@ -1,4 +1,4 @@
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 
 use crate::system::SystemAdapter;
 
@@ -96,6 +96,39 @@ impl SystemAdapter for RealSystemAdapter {
 
     fn wg_del_peer(&self, iface: &str, pub_key: &str) -> Result<(), String> {
         command_ok("wg", &["set", iface, "peer", pub_key, "remove"])
+    }
+
+    fn wg_gen_key(&self) -> Result<String, String> {
+        command_stdout("wg", &["genkey"]).map(|key| key.trim().to_string())
+    }
+
+    fn wg_pub_key(&self, private_key: &str) -> Result<String, String> {
+        let mut child = std::process::Command::new("wg")
+            .arg("pubkey")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|err| format!("run wg pubkey: {err}"))?;
+        {
+            let stdin = child
+                .stdin
+                .as_mut()
+                .ok_or_else(|| "open wg pubkey stdin".to_string())?;
+            stdin
+                .write_all(private_key.as_bytes())
+                .and_then(|_| stdin.write_all(b"\n"))
+                .map_err(|err| format!("write wg pubkey stdin: {err}"))?;
+        }
+        let output = child
+            .wait_with_output()
+            .map_err(|err| format!("wait wg pubkey: {err}"))?;
+        if !output.status.success() {
+            return Err(command_stderr("wg pubkey", &output));
+        }
+        String::from_utf8(output.stdout)
+            .map(|key| key.trim().to_string())
+            .map_err(|err| format!("wg pubkey output is not UTF-8: {err}"))
     }
 }
 

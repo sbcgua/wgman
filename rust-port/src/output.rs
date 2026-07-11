@@ -80,6 +80,18 @@ pub fn print_peer_deltas<W: Write>(deltas: &[WGPeerDelta], writer: &mut W) {
     }
 }
 
+pub fn print_apply_and_rollback_error<W: Write>(
+    err: &str,
+    rollback_err: Option<&str>,
+    writer: &mut W,
+) {
+    if let Some(rollback_err) = rollback_err {
+        let _ = writeln!(writer, "error: {err} (rollback failed: {rollback_err})");
+    } else {
+        let _ = writeln!(writer, "error: {err}");
+    }
+}
+
 pub fn format_status(status: &str, color: bool) -> String {
     if !color {
         return status.to_string();

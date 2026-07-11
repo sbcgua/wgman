@@ -153,6 +153,35 @@ version.
 - The CLI has a `run_with_input` test seam so prompt-driven commands read from
   an injected buffered input stream. `main_entry` wires this to real stdin.
 
+## Create, Remove, And Modify Commands
+
+- `create` and its `add` alias refuse `--dry-run`, require a clean check
+  result, reject duplicate/case-conflicting users, generate key material
+  through `SystemAdapter`, write `<user>.vpn.conf` in the current directory
+  with no overwrite, and save only the public key to `db.yaml`.
+- Client config rendering reads `user.conf.template`, strips full-line
+  comments, trims leading blank lines, and replaces
+  `$CLIENT_PRIVATE_KEY`, `$CLIENT_VPN_IP`, and `$SERVER_PUBLIC_KEY`.
+- The real system adapter generates keys with `wg genkey` and derives public
+  keys with `wg pubkey` via stdin/stdout. Tests use deterministic fake keys.
+- Auto-allocation picks the next IPv4 after the maximum of the interface IP
+  and existing in-subnet user IPs, excluding network and broadcast addresses.
+- `create` writes the client config first, applies planned live deltas through
+  the deploy engine, then saves `db.yaml`. On live or DB-save failure it
+  best-effort rolls back completed live deltas and removes the generated
+  client config.
+- `remove` requires clean state, prints a planned-removal summary, supports
+  `--dry-run` and confirmation prompts, removes the user and access from the
+  DB, applies ipset deletes before WireGuard peer removal through the deploy
+  engine, and rolls back completed live deltas on apply or DB-save failure.
+- `mod` supports comma-separated `+target,-target` access edits and
+  `activate`/`deactivate` toggles. Toggles preserve comments/access, change
+  only the `inactive` field, and use full state-delta apply plus rollback.
+- Rust `mod` access edits apply tracked ipset deltas before saving `db.yaml`
+  so live changes can be rolled back if an ipset operation or DB save fails.
+  This keeps the fake-tested live state and persisted DB consistent on Phase 8
+  failure paths.
+
 ## Deploy And Rollback
 
 - `deploy.rs` applies already-planned live-state deltas and remains free of

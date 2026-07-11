@@ -30,6 +30,7 @@ the current state without relying on chat history.
 - Phase 5 implementation completed, reviewed, verified, and committed.
 - Phase 6 implementation completed, reviewed, and verified.
 - Phase 7 implementation completed, reviewed, and verified.
+- Phase 8 implementation completed and locally verified.
 
 ## Decisions Captured
 
@@ -301,3 +302,36 @@ the current state without relying on chat history.
   - `cargo clippy --all-targets -- -D warnings`
   - `make check`
 - Next step after commit: start Phase 8 with a medium-reasoning worker agent.
+
+### Phase 8: Create, Remove, And Modify Commands
+
+- Implemented `create`/`add` under `src/commands/create.rs`: Go-compatible
+  argument parsing including command-local `-c`, optional IP or access list,
+  `/32` IP normalization, next-IP allocation, key generation through
+  `SystemAdapter`, duplicate/case-conflict checks, client config rendering,
+  no-overwrite `0600` config writes, DB mutation planning, live apply, DB
+  save, and best-effort rollback of live state plus generated config.
+- Implemented client config generation in `src/client_config.rs`, including
+  comment-line stripping, leading blank trimming, placeholder replacement, and
+  no-overwrite writes.
+- Extended `SystemAdapter`, `RealSystemAdapter`, and the integration-test fake
+  with `wg_gen_key` and `wg_pub_key`; the real adapter uses `wg genkey` and
+  `wg pubkey` with argument arrays/stdin.
+- Implemented `remove` under `src/commands/remove.rs`: clean-state refusal,
+  planned-removal summary, prompt/`--yes`, `--dry-run`, DB mutation planning,
+  deploy-engine live apply, DB save, and rollback on live or save failures.
+- Implemented `mod` under `src/commands/modify.rs`: access expression parsing,
+  activation/deactivation, inactive-user DB-only access edits, dry-run, no-op
+  detection, validation of updated DB, live apply, DB save, and rollback for
+  live mutations.
+- Wired create/add/remove/mod into CLI dispatch and removed the Phase 8
+  unsupported-command path.
+- Added `tests/phase8.rs` covering client config rendering/writes, create
+  success/no-private-key and rollback, create parsing/drift/dry-run errors,
+  remove dry-run/prompt/apply/rollback, mod access edits, activation, dry-run,
+  rollback, and strict CLI parsing edge cases.
+- Local checks passed:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
