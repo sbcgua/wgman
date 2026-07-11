@@ -7,12 +7,13 @@ Current access control is based on two levels:
 
 This controls who may reach which VM, but not which services on that VM may be reached. If a user is allowed to a VM, the firewall rule can only allow or deny traffic to the VM as a whole unless ports are hardcoded in iptables rules outside the managed access data.
 
-The idea is to add another concept to the confguration - resource (or maybe service - discussible) - which would be a combination of vm and port (or ports). A user then may have access to VMs and/or resources.
+The idea is to add another concept to the confguration - "resource" (or maybe "service" - discussible) - which would be a combination of vm and port (or ports). A user then may have access to VMs and/or resources.
 
 Tehcnically, add a separate port-aware ipset for service-limited access, preferably:
 
 - `hash:ip,net,port` for TCP/UDP rules where the source VPN IP, destination VM IP/CIDR, and destination port are matched together.
-- the set must be referred in the `env.yaml` as `matrix_ports`
+- the set must be referred in the `env.yaml` as `port_matrix`
+- the current `matrix` attribute should be renamed to `ip_matrix`
 
 Example shape:
 
@@ -39,9 +40,10 @@ Notes:
 Suggested config shape (`db.yaml`):
 
 - Add a section `resources`, that would be a combination of a known vm and port list
-- resource name should allow `@` symbol - it would make convenient to name resources as `service@vm` if needed
-- as resources may be referred from access in the same manner as a vm, the name must be unique over both resources and VMs - e.g. there may be no resource `sandbox` and vm `sandbox`
-- port list can be single digit, or array. Port may have prefix for TCP or UDP. Port without prefix is supposed to be TCP (this is supposedly the default behavior of the ipset itself - manpage: _"The hash:ip,port,ip set type uses a hash to store IP address, port number and a second IP address triples. The port number is interpreted together with a protocol (default TCP) and zero protocol number cannot be used."_). Example config model below. Missing port is an error. Port `*` is equivalent to access to the VM - the access must be added to the VM ipset, not port-limited ipset.
+- resource name should allow `@` symbol - it would make convenient to name resources like `service@vm` if needed
+- resources may be referred from access in the same manner as a vm. Thus, the it's name must be unique over both resources and VMs - e.g. there may be no resource `sandbox` and vm `sandbox`
+- port list can be single digit, or an array. Port may have prefix for TCP or UDP (`tcp:`, `udp:`). Port without prefix is supposed to be TCP (this is supposedly the default behavior of the ipset itself - manpage: _"The hash:ip,port,ip set type uses a hash to store IP address, port number and a second IP address triples. The port number is interpreted together with a protocol (default TCP) and zero protocol number cannot be used."_). Example config model below. Missing port is an error.
+- a resource may have optional comment
 
 ```yaml
 users:
@@ -52,6 +54,7 @@ resources:
   ssh@sandbox:
     vm: sandbox
     ports: 22
+    comment: access to SSH
   web@sandbox:
     vm: sandbox
     ports: [80, 443, 8080]
@@ -75,7 +78,7 @@ access:
 
 Other considerations:
 
-- the semantics of the wgman commands looks to be compatible without extra changes
+- the semantics of the wgman commands supposed to be compatible without extra changes. E.g. `wgman mod user1 +ssh@sandbox` would add this resource for the user
 - `wgman-firewall-hook.template` must be updated with the final version if `iptables` call
-- init-ipsets shuold create the new set as well
-- check and deploy logic should be concentrated in the `check` and `deploy` files respectively, the rest of the commands should delegate the validation and application of rules to them (as it is now).
+- init-ipsets should create the new set as well
+- check and deploy logic should be concentrated in the `check` and `deploy` files respectively, the rest of the commands should delegate the validation and application of rules to them (as it is now). Presumably, VMs and Resources look similar to commands, so their maintenance will mainly hapen internally in `check`, `deploy` and `db` logic areas.
