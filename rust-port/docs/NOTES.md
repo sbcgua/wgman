@@ -46,8 +46,40 @@ version.
 - Prefer explicit user-visible output formatting over crate defaults when crate
   defaults differ from the Go CLI behavior.
 - Execute external commands with argument arrays, never shell command strings.
-- Phase 1 intentionally has no external crate dependencies. Add crates only
-  when a later phase has a concrete need.
+- Phase 1 intentionally had no external crate dependencies. Phase 2 added
+  `serde`, `serde_yaml`, and `tempfile` for typed YAML loading and same-dir
+  atomic DB writes.
+
+## Config And DB
+
+- `config.yaml` and `db.yaml` loading rejects unknown fields with serde
+  `deny_unknown_fields`.
+- YAML tags are rejected before typed deserialization; only plain YAML mappings,
+  sequences, strings, booleans, numbers, and nulls are accepted by the loader.
+- Missing required scalar fields deserialize to empty values so validation can
+  produce Go-compatible required-field errors.
+- User and VM names allow only ASCII letters, digits, `_`, and `-`.
+- Resource and access-target names allow ASCII letters, digits, `_`, `@`, and
+  `-`; `@` remains resource-only because VM names use the stricter pattern.
+- Name lookup remains case-sensitive, but ASCII case-fold conflicts are
+  rejected for users, VMs, and the shared VM/resource access-target namespace.
+- Users and VMs must be plain IPv4 addresses. IPv6, CIDR, and non-IP values
+  are rejected at DB validation time.
+- Resource ports deserialize from either a scalar or a sequence. Unprefixed
+  ports normalize to TCP, and normalized ports render as `tcp:<port>` or
+  `udp:<port>`.
+- DB validation rejects duplicate user IPs, duplicate public keys, duplicate
+  access entries, unknown access owners/targets, resource references to unknown
+  VMs, duplicate normalized resource ports, and `*` mixed with other access
+  entries.
+- DB clone and access-normalization helpers are separate from saving. The DB
+  writer sorts map sections and access owners but preserves each access list's
+  caller-provided order, matching the Go implementation.
+- Deterministic DB writes omit empty comments and false `inactive`; private
+  keys are not represented in the Rust DB model.
+- `save_db_atomic` writes a same-directory temporary file, chmods it `0600` on
+  Unix, fsyncs the file, renames it over `db.yaml`, and fsyncs the directory on
+  Unix.
 
 ## Tests
 

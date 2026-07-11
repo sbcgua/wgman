@@ -24,11 +24,8 @@ the current state without relying on chat history.
 - Phase 1 implementation completed: Rust Cargo skeleton, Makefile, module
   layout, `wgman-rs` binary target, initial `App`/`SystemAdapter` shape, fake
   test support, and smoke tests are in place.
-- Phase 2 implementation worker completed and left changes uncommitted.
-- Phase 2 high-reasoning review completed and found two DB writer issues that
-  must be fixed before the Phase 2 implementation commit.
-- Work is paused by user request. Do not start Phase 3 until the user confirms
-  resumption.
+- Phase 2 implementation completed and review findings are resolved.
+- Phase 3 may start after the Phase 2 implementation commit.
 
 ## Decisions Captured
 
@@ -87,7 +84,7 @@ the current state without relying on chat history.
   - `cargo test`
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
-- High-reasoning review agent `Gibbs` found issues that remain unresolved:
+- High-reasoning review agent `Gibbs` found issues:
   - High: `rust-port/src/db.rs` writes YAML-ambiguous strings as plain scalars.
     Example risk: `pub_key: "123"` is saved as `pub: 123`, then reload fails
     because YAML parses it as an integer rather than a string.
@@ -97,13 +94,16 @@ the current state without relying on chat history.
   - save/load round trips for YAML-ambiguous strings such as `"123"`,
     numeric-looking names, scalar-looking comments, and access targets;
   - empty top-level sections, especially `users: {}`.
-- Next resume step:
-  - Fix the DB writer quoting/empty-users issues and add the missing tests.
-  - Rerun `cargo test`, `cargo fmt --check`,
-    `cargo clippy --all-targets -- -D warnings`, and `make check`.
-  - Commit the Phase 2 implementation after fixes.
-  - Do not spawn the Phase 3 worker until Phase 2 is fixed, verified, and
-    committed.
+- Review findings were resolved after resumption:
+  - `db.rs` now quotes scalars that would parse back as non-string YAML
+    values.
+  - empty users are written as `users: {}`.
+  - regression tests cover ambiguous string round trips and empty users.
+- Acceptance checks passed after fixes:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
 
 ### Pause: User Requested Stop
 
@@ -112,3 +112,10 @@ the current state without relying on chat history.
   progress update.
 - The intended next action after user confirmation is to resolve the Phase 2
   review findings, not to start a new phase.
+
+### Resume After Pause
+
+- User confirmed resumption.
+- Fixed the Phase 2 review findings locally and reran all Phase 2 checks.
+- Next step: start Phase 3 with a medium-reasoning worker agent after the
+  Phase 2 implementation commit.
