@@ -6,8 +6,7 @@ use crate::cli::{App, GlobalFlags};
 use crate::config::load_config;
 use crate::db::{clone_db, normalize_access_set, normalize_db_access, save_db_atomic, validate_db};
 use crate::deploy::{
-    apply_ipset_deltas_tracked, apply_state_deltas_tracked, diff_expected_ipsets,
-    invert_ipset_deltas, rollback_state_deltas,
+    apply_ipset_deltas, apply_state_deltas_tracked, diff_expected_ipsets, rollback_state_deltas,
 };
 use crate::model::{Config, IPSetDelta, WGPeerDelta, WGPeerDeltaAction, DB};
 use crate::output::{
@@ -140,9 +139,8 @@ where
         return 0;
     }
 
-    if let Err((err, rollback_err)) = apply_mod_access_plan(&flags.config_dir, &plan, app.system())
-    {
-        print_apply_and_rollback_error(&err, rollback_err.as_deref(), stderr);
+    if let Err(err) = apply_mod_access_plan(&flags.config_dir, &plan, app.system()) {
+        let _ = writeln!(stderr, "error: {err}");
         return 1;
     }
 
@@ -206,21 +204,9 @@ fn apply_mod_access_plan<S: SystemAdapter>(
     config_dir: &str,
     plan: &ModAccessPlan,
     system: &S,
-) -> Result<(), (String, Option<String>)> {
-    let applied = match apply_ipset_deltas_tracked(&plan.ipset_deltas, system) {
-        Ok(applied) => applied,
-        Err(err) => {
-            let rollback_err =
-                crate::deploy::apply_ipset_deltas(&invert_ipset_deltas(&err.applied), system).err();
-            return Err((err.error, rollback_err));
-        }
-    };
-    if let Err(err) = save_db_atomic(config_dir, &plan.updated_db) {
-        let rollback_err =
-            crate::deploy::apply_ipset_deltas(&invert_ipset_deltas(&applied), system).err();
-        return Err((err, rollback_err));
-    }
-    Ok(())
+) -> Result<(), String> {
+    save_db_atomic(config_dir, &plan.updated_db)?;
+    apply_ipset_deltas(&plan.ipset_deltas, system)
 }
 
 fn apply_mod_toggle_plan<S: SystemAdapter>(

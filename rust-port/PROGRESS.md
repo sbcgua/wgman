@@ -30,7 +30,7 @@ the current state without relying on chat history.
 - Phase 5 implementation completed, reviewed, verified, and committed.
 - Phase 6 implementation completed, reviewed, and verified.
 - Phase 7 implementation completed, reviewed, and verified.
-- Phase 8 implementation completed and locally verified.
+- Phase 8 implementation completed, reviewed, and verified.
 
 ## Decisions Captured
 
@@ -322,8 +322,8 @@ the current state without relying on chat history.
   deploy-engine live apply, DB save, and rollback on live or save failures.
 - Implemented `mod` under `src/commands/modify.rs`: access expression parsing,
   activation/deactivation, inactive-user DB-only access edits, dry-run, no-op
-  detection, validation of updated DB, live apply, DB save, and rollback for
-  live mutations.
+  detection, validation of updated DB, Go-compatible DB-first access edits,
+  and rollback-backed live mutations for activation toggles.
 - Wired create/add/remove/mod into CLI dispatch and removed the Phase 8
   unsupported-command path.
 - Added `tests/phase8.rs` covering client config rendering/writes, create
@@ -335,3 +335,25 @@ the current state without relying on chat history.
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `make check`
+- Phase 8 implementation committed as `7644ac7`.
+- High-reasoning review agent `Avicenna` found two Phase 8 issues:
+  - Medium: `mod` access-edit failure semantics diverged from Go by applying
+    ipsets before saving `db.yaml` and rolling back on live failure.
+  - Low: `cmd_create` did not reject `--dry-run` when called directly, relying
+    only on CLI dispatch.
+- Review findings were resolved:
+  - `mod` access edits now save `db.yaml` first and apply ipset deltas without
+    rollback, matching Go's failure semantics and leaving live drift for
+    `deploy` if an ipset operation fails.
+  - `cmd_create` now rejects `--dry-run` directly through the shared CLI guard.
+  - Regression tests cover both fixes.
+- Acceptance checks passed after review fixes:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- Residual review risks: real `wg`/`ipset` command paths were not exercised
+  against live Linux tools, and additional Go edge-case parity tests remain
+  useful for Phase 9 audit coverage.
+- Next step after commit: start Phase 9 final audit and packaging with a
+  medium-reasoning worker agent.

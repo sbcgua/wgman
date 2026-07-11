@@ -5,7 +5,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 
 use crate::check::{check, compute_expected_ipsets};
-use crate::cli::{App, GlobalFlags};
+use crate::cli::{reject_unsupported_dry_run, App, GlobalFlags};
 use crate::client_config::{render_client_config, write_client_config_no_overwrite};
 use crate::config::load_config;
 use crate::db::{clone_db, normalize_db_access, save_db_atomic, validate_db};
@@ -44,6 +44,9 @@ where
     W: Write,
     E: Write,
 {
+    if reject_unsupported_dry_run("create", flags, stderr) {
+        return 2;
+    }
     if !app.system().is_root() {
         let _ = writeln!(stderr, "error: wgman must be run as root");
         return 1;

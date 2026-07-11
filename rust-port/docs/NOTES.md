@@ -177,10 +177,10 @@ version.
 - `mod` supports comma-separated `+target,-target` access edits and
   `activate`/`deactivate` toggles. Toggles preserve comments/access, change
   only the `inactive` field, and use full state-delta apply plus rollback.
-- Rust `mod` access edits apply tracked ipset deltas before saving `db.yaml`
-  so live changes can be rolled back if an ipset operation or DB save fails.
-  This keeps the fake-tested live state and persisted DB consistent on Phase 8
-  failure paths.
+- `mod` access edits preserve the Go order: save `db.yaml` first, then apply
+  ipset deltas without rollback. If an ipset operation fails, the requested DB
+  change remains persisted and the resulting live drift is left for `deploy` to
+  reconcile.
 
 ## Deploy And Rollback
 

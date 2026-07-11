@@ -9,8 +9,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use support::FakeSystem;
 use tempfile::TempDir;
-use wgman_rs::cli::App;
+use wgman_rs::cli::{App, GlobalFlags};
 use wgman_rs::client_config::{render_client_config, write_client_config_no_overwrite};
+use wgman_rs::commands::create::cmd_create;
 
 fn fixed_now() -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(1_748_001_000)
@@ -308,6 +309,24 @@ fn create_rejects_dry_run_drift_bad_args_and_rolls_back_live_and_config() {
     assert_eq!(code, 2);
     assert!(stderr.contains("does not support --dry-run"));
 
+    let app = App::new(FakeSystem::default());
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let code = cmd_create(
+        &GlobalFlags {
+            dry_run: true,
+            ..GlobalFlags::default()
+        },
+        &[String::from("carol")],
+        &app,
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(code, 2);
+    assert!(String::from_utf8(stderr)
+        .unwrap()
+        .contains("does not support --dry-run"));
+
     let (code, _, stderr, _) = run(
         &[
             "wgman-rs",
@@ -499,7 +518,6 @@ fn mod_access_and_activation_paths_support_dry_run_apply_and_rollback() {
 
     let dir = write_config_dir();
     let dir_string = dir.path().display().to_string();
-    let before = fs::read_to_string(dir.path().join("db.yaml")).unwrap();
     let mut system = clean_system();
     system.ipset_add_errors = HashMap::from([(
         "wg_allow_matrix:10.8.0.10,192.168.122.101".to_string(),
@@ -519,14 +537,13 @@ fn mod_access_and_activation_paths_support_dry_run_apply_and_rollback() {
     );
     assert_eq!(code, 1);
     assert!(stderr.contains("permission denied"));
+    let db_text = fs::read_to_string(dir.path().join("db.yaml")).unwrap();
+    assert!(db_text.contains("alice:\n    - mailvm\n"));
+    assert!(!db_text.contains("alice:\n    - sandbox\n"));
     assert_eq!(
-        fs::read_to_string(dir.path().join("db.yaml")).unwrap(),
-        before
+        system.applied_ops.borrow().as_slice(),
+        ["del:wg_allow_matrix:10.8.0.10,192.168.122.100"]
     );
-    assert!(system
-        .applied_ops
-        .borrow()
-        .contains(&"add:wg_allow_matrix:10.8.0.10,192.168.122.100:alice -> sandbox".to_string()));
 
     let dir = write_inactive_bob_config_dir();
     let dir_string = dir.path().display().to_string();
