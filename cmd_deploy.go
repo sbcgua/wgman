@@ -48,7 +48,7 @@ func cmdDeploy(gf *globalFlags, args []string, app *App) int {
 
 	// Report planned changes.
 	fmt.Fprintf(app.Stdout, "deploy: planned changes (%d):\n", changeCount)
-	printDeltas(result.IPSetDeltas, app.Stdout)
+	printIPSetDeltas(result.IPSetDeltas, app.Stdout)
 	printPeerDeltas(result.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {

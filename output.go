@@ -34,8 +34,9 @@ func printCheckErrors(result *CheckResult, w io.Writer) {
 	}
 }
 
-// printDeltas writes a human-readable summary of planned ipset operations to w.
-func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
+// printIPSetDeltas writes a human-readable summary of planned ipset operations
+// to w.
+func printIPSetDeltas(deltas []IpsetDeltaOp, w io.Writer) {
 	for _, d := range deltas {
 		if d.Add {
 			if d.Comment != "" {
@@ -82,6 +83,6 @@ func printRemovePlan(plan *removePlan, w io.Writer) {
 	}
 	if len(plan.IPSetDeltas) > 0 {
 		fmt.Fprintf(w, "remove: planned access changes (%d):\n", len(plan.IPSetDeltas))
-		printDeltas(plan.IPSetDeltas, w)
+		printIPSetDeltas(plan.IPSetDeltas, w)
 	}
 }

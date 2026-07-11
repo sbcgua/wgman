@@ -104,7 +104,7 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 	}
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
 	if len(deltas) > 0 {
-		printDeltas(deltas, app.Stdout)
+		printIPSetDeltas(deltas, app.Stdout)
 	} else {
 		fmt.Fprintf(app.Stdout, "  update db access for %s\n", args[0])
 	}
@@ -146,7 +146,7 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 	changeCount += len(plan.PeerDeltas)
 
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
-	printDeltas(plan.IPSetDeltas, app.Stdout)
+	printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
 	printPeerDeltas(plan.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {

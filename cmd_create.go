@@ -203,7 +203,7 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 	fmt.Fprintf(app.Stdout, "create: planned user %s at %s\n", parsed.Name, plan.ClientIP)
 	if len(plan.IPSetDeltas) > 0 {
 		fmt.Fprintf(app.Stdout, "create: planned access changes (%d):\n", len(plan.IPSetDeltas))
-		printDeltas(plan.IPSetDeltas, app.Stdout)
+		printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
 	}
 
 	if err := writeClientConfig(clientConfigPath, clientConfig); err != nil {
