@@ -355,3 +355,4 @@ See [PORT_LIMITED_ACCESS_IMPROVEMENT.md](./archive/PORT_LIMITED_ACCESS_IMPROVEME
 - `list` command: format user names similar to `show`, which is: add `~` for inactive ones and color them grey. Respect --no-color flag.
 - `cmd_check`: color status of final messages OK and FAILED in green and red respectively. Respect --no-color flag.
 - `list` command: color `tcp:` and `udp:` prefixes in pink and cyan respectively and Group tcp and udp ports together. Respect --no-color flag.
+- `wgman-firewall-hook`: extract interface and sets from yaml by default
