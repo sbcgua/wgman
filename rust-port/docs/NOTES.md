@@ -255,10 +255,9 @@ version.
   subnet validation, ipset drift/deltas, missing sets, malformed managed
   entries, and expected ipset computation.
 - Save-failure rollback tests use temporary directories with read-only Unix
-  permissions after fixture setup. They remain part of the normal Linux suite
-  and do not require root; if future CI runs tests as root, these cases may need
-  an explicit save-failure seam instead because root can bypass directory write
-  bits.
+  permissions after fixture setup. They run in the normal non-root Linux suite
+  and skip themselves under effective UID 0 because root can bypass directory
+  write bits.
 
 ## Packaging
 

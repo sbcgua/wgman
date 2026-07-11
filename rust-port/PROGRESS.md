@@ -391,3 +391,12 @@ the current state without relying on chat history.
 - `wgman-rs help` output was sanity-checked with `cargo run --quiet -- help`;
   it includes the expected command list, create/add alias, dry-run/yes support,
   and color/config flags.
+- Phase 9 audit/packaging committed as `9f504e4`.
+- High-reasoning final review agent `Jason` found one Phase 9 issue:
+  permission-based DB-save failure tests could fail under root-run Linux CI
+  because root can bypass directory write bits.
+- Review finding was resolved:
+  - the two permission-based save-failure tests now skip when effective UID is
+    `0`;
+  - implementation notes now document that these tests are normal non-root
+    Linux coverage and skip under root.

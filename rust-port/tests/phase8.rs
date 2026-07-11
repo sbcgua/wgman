@@ -241,6 +241,15 @@ fn make_config_dir_writable(dir: &TempDir) {
         .expect("chmod config dir writable");
 }
 
+#[cfg(unix)]
+fn running_as_root() -> bool {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    // SAFETY: geteuid has no preconditions and does not access Rust memory.
+    unsafe { geteuid() == 0 }
+}
+
 fn drift_system() -> FakeSystem {
     let mut system = clean_system();
     system.ipset_results.insert(
@@ -518,6 +527,10 @@ fn create_rejects_dry_run_drift_bad_args_and_rolls_back_live_and_config() {
 #[cfg(unix)]
 #[test]
 fn create_db_save_failure_rolls_back_live_state_and_generated_config() {
+    if running_as_root() {
+        eprintln!("skipping permission-based save-failure test under root");
+        return;
+    }
     let _guard = cwd_lock().lock().unwrap();
     let original = std::env::current_dir().unwrap();
     let dir = write_config_dir();
@@ -695,6 +708,10 @@ fn remove_rejects_missing_user_and_admin_delete_removes_all_access() {
 #[cfg(unix)]
 #[test]
 fn remove_db_save_failure_rolls_back_live_state() {
+    if running_as_root() {
+        eprintln!("skipping permission-based save-failure test under root");
+        return;
+    }
     let dir = write_config_dir();
     let before = fs::read_to_string(dir.path().join("db.yaml")).unwrap();
     let dir_string = dir.path().display().to_string();
