@@ -118,9 +118,10 @@ The repository includes an optional `iptables` hook template at [share/usr/local
 Review and edit the variables at the top of the template before installing it, especially:
 
 - `IPTABLES` and `IPSET`
-- `WG_IFACE`
+- `CONFIG_FILE`, if your `config.yaml` is not in `/etc/wireguard/wgman/config.yaml`
+- `WG_IFACE`, if you want to override the interface from `config.yaml`
 - `VM_IFACE`
-- `SET_ALL`, `SET_IP_MATRIX`, and `SET_PORT_MATRIX`
+- `SET_ALL`, `SET_IP_MATRIX`, and `SET_PORT_MATRIX`, if you want to override the managed set names from `config.yaml`
 - `CHAIN_INP` and `CHAIN_FWD`
 
 Install it manually after review:

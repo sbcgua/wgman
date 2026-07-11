@@ -5,12 +5,15 @@ set -euo pipefail
 IPTABLES="/usr/sbin/iptables"
 IPSET="/usr/sbin/ipset"
 
-WG_IFACE="wg0"
+# Empty wgman values are read from CONFIG_FILE. Set any of them here to
+# override config.yaml while keeping this file as a self-contained template.
+CONFIG_FILE="${CONFIG_FILE:-/etc/wireguard/wgman/config.yaml}"
+WG_IFACE="${WG_IFACE:-}"                  # e.g. wg0
 VM_IFACE="virbr0"
 
-SET_ALL="wg_allow_all"
-SET_IP_MATRIX="wg_allow_matrix"
-SET_PORT_MATRIX="wg_allow_matrix_ports"
+SET_ALL="${SET_ALL:-}"                    # e.g. wg_allow_all
+SET_IP_MATRIX="${SET_IP_MATRIX:-}"        # e.g. wg_allow_ip_matrix
+SET_PORT_MATRIX="${SET_PORT_MATRIX:-}"    # e.g. wg_allow_port_matrix
 
 CHAIN_INP="WGMAN_INP"
 CHAIN_FWD="WGMAN_FWD"
@@ -29,6 +32,83 @@ EOF
 die() {
   echo "error: $*" >&2
   exit 1
+}
+
+load_wgman_config() {
+  local key value
+
+  if [[ -z "$CONFIG_FILE" ]]; then
+    die "CONFIG_FILE is empty; set it to config.yaml or define WG_IFACE and managed set names directly"
+  fi
+  if [[ ! -r "$CONFIG_FILE" ]]; then
+    return 0
+  fi
+
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+      interface)
+        if [[ -z "$WG_IFACE" ]]; then WG_IFACE="$value"; fi
+        ;;
+      sets.all)
+        if [[ -z "$SET_ALL" ]]; then SET_ALL="$value"; fi
+        ;;
+      sets.ip_matrix)
+        if [[ -z "$SET_IP_MATRIX" ]]; then SET_IP_MATRIX="$value"; fi
+        ;;
+      sets.port_matrix)
+        if [[ -z "$SET_PORT_MATRIX" ]]; then SET_PORT_MATRIX="$value"; fi
+        ;;
+    esac
+  done < <(parse_wgman_config "$CONFIG_FILE")
+}
+
+parse_wgman_config() {
+  local config_file="$1"
+
+  awk '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    function unquote(s) {
+      if (s ~ /^"[^"]*"$/ || s ~ /^'\''[^'\'']*'\''$/) {
+        return substr(s, 2, length(s) - 2)
+      }
+      return s
+    }
+    {
+      sub(/[[:space:]]+#.*$/, "", $0)
+      if ($0 ~ /^[[:space:]]*$/) next
+
+      indent = match($0, /[^[:space:]]/) - 1
+      line = $0
+      key = trim(line)
+      sub(/:.*/, "", key)
+      value = trim(line)
+      sub(/^[^:]*:/, "", value)
+      value = unquote(trim(value))
+
+      if (indent == 0 && key == "interface") {
+        print "interface\t" value
+        in_sets = 0
+        next
+      }
+      if (indent == 0 && key == "sets") {
+        in_sets = 1
+        next
+      }
+      if (indent == 0) {
+        in_sets = 0
+        next
+      }
+      if (in_sets && indent > 0) {
+        if (key == "all") print "sets.all\t" value
+        if (key == "ip_matrix") print "sets.ip_matrix\t" value
+        if (key == "port_matrix") print "sets.port_matrix\t" value
+      }
+    }
+  ' "$config_file"
 }
 
 require_non_empty() {
@@ -53,6 +133,8 @@ require_common_config() {
   if (( EUID != 0 )); then
     die "this script must be run as root"
   fi
+
+  load_wgman_config
 
   require_non_empty IPTABLES
   require_non_empty WG_IFACE
