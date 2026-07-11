@@ -11,6 +11,9 @@ const (
 	ansiReset   = "\x1b[0m"
 	ansiGrey    = "\x1b[90m"
 	ansiRed     = "\x1b[31m"
+	ansiGreen   = "\x1b[32m"
+	ansiCyan    = "\x1b[36m"
+	ansiPink    = "\x1b[95m"
 	ansiDimCyan = "\x1b[2;36m"
 )
 
@@ -20,6 +23,18 @@ func colorGrey(s string) string {
 
 func colorRed(s string) string {
 	return ansiRed + s + ansiReset
+}
+
+func colorGreen(s string) string {
+	return ansiGreen + s + ansiReset
+}
+
+func colorCyan(s string) string {
+	return ansiCyan + s + ansiReset
+}
+
+func colorPink(s string) string {
+	return ansiPink + s + ansiReset
 }
 
 func colorDimCyan(s string) string {

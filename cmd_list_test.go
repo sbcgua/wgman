@@ -78,6 +78,46 @@ func TestRunList_ColorizesAccessSummaryMarkers(t *testing.T) {
 	}
 }
 
+func TestRunList_InactiveUserNameSuffixNoColor(t *testing.T) {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+
+	var buf strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "", &buf, io.Discard, false)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "bob~") {
+		t.Errorf("expected inactive user suffix, got:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("expected no ANSI escapes in no-color output, got:\n%s", out)
+	}
+}
+
+func TestRunList_InactiveUserNameGreyWithColor(t *testing.T) {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+
+	var buf strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, ansiGrey+"bob~"+ansiReset) {
+		t.Errorf("expected grey inactive user name, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "bob~") {
+		t.Errorf("expected inactive suffix after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
 func TestRunList_FilterColorizesAccessMarkers(t *testing.T) {
 	db := makeTestDB()
 	var admin strings.Builder
@@ -97,6 +137,65 @@ func TestRunList_FilterColorizesAccessMarkers(t *testing.T) {
 	}
 	if !strings.Contains(none.String(), ansiGrey+"none"+ansiReset) {
 		t.Errorf("expected grey none, got:\n%s", none.String())
+	}
+}
+
+func TestRunList_FilterInactiveUserNameGreyWithColor(t *testing.T) {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+
+	var buf strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "bob", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, ansiGrey+"bob~"+ansiReset+":") {
+		t.Errorf("expected grey inactive filtered user name, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "bob~:") {
+		t.Errorf("expected inactive suffix after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
+func TestRunList_ColorizesResourcePortPrefixes(t *testing.T) {
+	db := makeResourceDB()
+	db.Resources["dns@mailvm"] = ResourceEntry{
+		VM:    "mailvm",
+		Ports: ResourcePorts{{Protocol: "udp", Port: 53}, {Protocol: "tcp", Port: 53}},
+	}
+	var buf strings.Builder
+	code := runListWithColor(db, &CheckResult{}, "", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, ansiPink+"tcp:"+ansiReset+"53") {
+		t.Errorf("expected pink tcp prefix, got:\n%s", out)
+	}
+	if !strings.Contains(out, ansiCyan+"udp:"+ansiReset+"53") {
+		t.Errorf("expected cyan udp prefix, got:\n%s", out)
+	}
+	if !strings.Contains(stripANSI(out), "tcp:53,udp:53") {
+		t.Errorf("expected plain sorted ports after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+}
+
+func TestRunList_ColorDoesNotChangeVisibleLayout(t *testing.T) {
+	db := makeResourceDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+	var plain strings.Builder
+	var colored strings.Builder
+
+	runListWithColor(db, &CheckResult{}, "", &plain, io.Discard, false)
+	runListWithColor(db, &CheckResult{}, "", &colored, io.Discard, true)
+
+	if got, want := stripANSI(colored.String()), plain.String(); got != want {
+		t.Errorf("colored output changed visible layout after stripping ANSI\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
 

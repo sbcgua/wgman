@@ -65,7 +65,9 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 
 	fmt.Fprintln(stdout, "Users:")
 	for _, name := range sortedKeys(db.Users) {
-		fmt.Fprintf(stdout, "  %-20s %-15s %s\n", name, db.Users[name].IP, formatAccessSummary(db.Access[name], color))
+		u := db.Users[name]
+		nameCell := showUserNameCell(name, u.Inactive, color)
+		fmt.Fprintf(stdout, "  %s%s %-15s %s\n", nameCell.display, paddingFor(nameCell.plain, 20), u.IP, formatAccessSummary(db.Access[name], color))
 	}
 
 	fmt.Fprintln(stdout, "")
@@ -81,7 +83,7 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 	} else {
 		for _, name := range sortedKeys(db.Resources) {
 			resource := db.Resources[name]
-			fmt.Fprintf(stdout, "  %-20s %s %s\n", name, resource.VM, formatResourcePorts(resource.Ports))
+			fmt.Fprintf(stdout, "  %-20s %s %s\n", name, resource.VM, formatResourcePorts(resource.Ports, color))
 		}
 	}
 
@@ -89,7 +91,14 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 	return 0
 }
 
-func formatResourcePorts(ports ResourcePorts) string {
+func paddingFor(s string, width int) string {
+	if len(s) >= width {
+		return ""
+	}
+	return strings.Repeat(" ", width-len(s))
+}
+
+func formatResourcePorts(ports ResourcePorts, color bool) string {
 	if len(ports) == 0 {
 		return "(none)"
 	}
@@ -98,7 +107,24 @@ func formatResourcePorts(ports ResourcePorts) string {
 		parts = append(parts, port.String())
 	}
 	sort.Strings(parts)
+	for i, part := range parts {
+		parts[i] = formatResourcePort(part, color)
+	}
 	return strings.Join(parts, ",")
+}
+
+func formatResourcePort(port string, color bool) string {
+	if !color {
+		return port
+	}
+	switch {
+	case strings.HasPrefix(port, "tcp:"):
+		return colorPink("tcp:") + strings.TrimPrefix(port, "tcp:")
+	case strings.HasPrefix(port, "udp:"):
+		return colorCyan("udp:") + strings.TrimPrefix(port, "udp:")
+	default:
+		return port
+	}
 }
 
 func formatAccessSummary(vms []string, color bool) string {
@@ -130,14 +156,16 @@ func colorAccessItem(item string, color bool) string {
 
 // runListUser prints the access list for a single named user.
 func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) int {
-	if _, ok := db.Users[filter]; !ok {
+	u, ok := db.Users[filter]
+	if !ok {
 		fmt.Fprintf(stderr, "error: user %q not found\n", filter)
 		fmt.Fprintln(stderr, "list: FAILED")
 		return 1
 	}
 
 	vms := db.Access[filter]
-	fmt.Fprintf(stdout, "%s:\n", filter)
+	nameCell := showUserNameCell(filter, u.Inactive, color)
+	fmt.Fprintf(stdout, "%s:\n", nameCell.display)
 	if len(vms) == 0 {
 		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem("none", color))
 		fmt.Fprintln(stdout, "list: OK")
