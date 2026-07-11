@@ -19,11 +19,7 @@ type createArgs struct {
 	Comment string
 }
 
-func parseCreateArgs(args []string) (*createArgs, error) {
-	return parseCreateArgsWithComment(args, "", false)
-}
-
-func parseCreateArgsWithComment(args []string, comment string, commentSet bool) (*createArgs, error) {
+func parseCreateArgs(args []string, comment string, commentSet bool) (*createArgs, error) {
 	var err error
 	args, comment, commentSet, err = extractCreateCommentFlags(args, comment, commentSet)
 	if err != nil {
@@ -148,7 +144,7 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 
-	parsed, err := parseCreateArgsWithComment(args, gf.createComment, gf.createCommentSet)
+	parsed, err := parseCreateArgs(args, gf.createComment, gf.createCommentSet)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 2

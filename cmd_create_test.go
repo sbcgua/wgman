@@ -22,6 +22,8 @@ func TestParseCreateArgs(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        []string
+		comment     string
+		commentSet  bool
 		wantName    string
 		wantIP      string
 		wantAccess  string
@@ -34,10 +36,11 @@ func TestParseCreateArgs(t *testing.T) {
 		{name: "ip and access", args: []string{"carol", "10.8.0.20", "sandbox"}, wantName: "carol", wantIP: "10.8.0.20", wantAccess: "sandbox"},
 		{name: "comment before name", args: []string{"-c", " laptop replacement ", "carol"}, wantName: "carol", wantComment: "laptop replacement"},
 		{name: "comment after name", args: []string{"carol", "-c=temporary contractor"}, wantName: "carol", wantComment: "temporary contractor"},
+		{name: "global comment", args: []string{"carol"}, comment: "manual approval", commentSet: true, wantName: "carol", wantComment: "manual approval"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseCreateArgs(tc.args)
+			got, err := parseCreateArgs(tc.args, tc.comment, tc.commentSet)
 			if err != nil {
 				t.Fatalf("parseCreateArgs: %v", err)
 			}
@@ -67,7 +70,7 @@ func TestParseCreateArgs_Invalid(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := parseCreateArgs(tc.args); err == nil {
+			if _, err := parseCreateArgs(tc.args, "", false); err == nil {
 				t.Fatal("expected parse error")
 			}
 		})
