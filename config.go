@@ -38,8 +38,11 @@ func validateConfig(cfg *Config) error {
 	if cfg.Sets.All == "" {
 		return fmt.Errorf("config.yaml: sets.all is required")
 	}
-	if cfg.Sets.Matrix == "" {
-		return fmt.Errorf("config.yaml: sets.matrix is required")
+	if cfg.Sets.IPMatrix == "" {
+		return fmt.Errorf("config.yaml: sets.ip_matrix is required")
+	}
+	if cfg.Sets.PortMatrix == "" {
+		return fmt.Errorf("config.yaml: sets.port_matrix is required")
 	}
 	return nil
 }

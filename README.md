@@ -22,11 +22,21 @@
     sandbox: 192.168.122.100
     mailvm: 192.168.122.101
 
+  resources:
+    ssh@sandbox:
+      vm: sandbox
+      ports: 22
+    dns@mailvm:
+      vm: mailvm
+      ports:
+        - udp:53
+        - tcp:53
+
   access:
     admin:
       - "*"
     alice:
-      - sandbox
+      - ssh@sandbox
     bob:
       - sandbox
       - mailvm
@@ -110,7 +120,7 @@ Review and edit the variables at the top of the template before installing it, e
 - `IPTABLES` and `IPSET`
 - `WG_IFACE`
 - `VM_IFACE`
-- `SET_ALL` and `SET_MATRIX`
+- `SET_ALL`, `SET_IP_MATRIX`, and `SET_PORT_MATRIX`
 - `CHAIN_INP` and `CHAIN_FWD`
 
 Install it manually after review:
@@ -134,7 +144,7 @@ PostUp = /usr/local/sbin/wgman-firewall-hook up
 PreDown = /usr/local/sbin/wgman-firewall-hook down
 ```
 
-The script manages only its dedicated `iptables` chains and parent jump rules. It allows TCP and ICMP forwarding to resources permitted by the managed ipsets. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
+The script manages only its dedicated `iptables` chains and parent jump rules. It allows full-VM TCP/ICMP forwarding through the IP matrix set, and TCP/UDP service forwarding through the port matrix set. Resource entries do not grant ICMP. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
 
 ```sh
 sudo /usr/local/sbin/wgman-firewall-hook reassert
@@ -188,6 +198,16 @@ Create the managed ipsets defined in `config.yaml`:
 sudo wgman init-ipsets
 ```
 
+The config must define all three managed sets:
+
+```yaml
+interface: wg0
+sets:
+  all: wg_allow_all
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
+```
+
 Preview access reconciliation:
 
 ```sh
@@ -224,10 +244,30 @@ Create a user with a stored operator comment:
 sudo wgman create -c "laptop replacement scheduled" alice
 ```
 
-Create a user with an explicit IP and resource access:
+Create a user with an explicit IP and full-VM access:
 
 ```sh
 sudo wgman create alice 10.1.0.10 sandbox,mailvm
+```
+
+Create or modify access to a port-limited resource:
+
+```yaml
+resources:
+  ssh@sandbox:
+    vm: sandbox
+    ports: 22
+  web@sandbox:
+    vm: sandbox
+    ports: [80, 443, tcp:8080]
+  dns@mailvm:
+    vm: mailvm
+    ports: udp:53
+```
+
+```sh
+sudo wgman create alice ssh@sandbox
+sudo wgman mod alice +web@sandbox,-ssh@sandbox
 ```
 
 Modify resource access:

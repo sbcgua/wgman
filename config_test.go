@@ -9,7 +9,8 @@ func TestLoadConfig_Valid(t *testing.T) {
 interface: wg0
 sets:
   all: wg_allow_all
-  matrix: wg_allow_matrix
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
 `)
 	cfg, err := LoadConfig(dir)
 	h.assertNoError(err)
@@ -19,8 +20,11 @@ sets:
 	if cfg.Sets.All != "wg_allow_all" {
 		t.Errorf("sets.all = %q, want wg_allow_all", cfg.Sets.All)
 	}
-	if cfg.Sets.Matrix != "wg_allow_matrix" {
-		t.Errorf("sets.matrix = %q, want wg_allow_matrix", cfg.Sets.Matrix)
+	if cfg.Sets.IPMatrix != "wg_allow_matrix" {
+		t.Errorf("sets.ip_matrix = %q, want wg_allow_matrix", cfg.Sets.IPMatrix)
+	}
+	if cfg.Sets.PortMatrix != "wg_allow_matrix_ports" {
+		t.Errorf("sets.port_matrix = %q, want wg_allow_matrix_ports", cfg.Sets.PortMatrix)
 	}
 }
 
@@ -41,22 +45,27 @@ var configRequiredFieldTests = []struct {
 }{
 	{
 		name:    "missing interface",
-		yaml:    "sets:\n  all: a\n  matrix: b\n",
+		yaml:    "sets:\n  all: a\n  ip_matrix: b\n  port_matrix: c\n",
 		wantErr: "interface is required",
 	},
 	{
 		name:    "missing sets.all",
-		yaml:    "interface: wg0\nsets:\n  matrix: b\n",
+		yaml:    "interface: wg0\nsets:\n  ip_matrix: b\n  port_matrix: c\n",
 		wantErr: "sets.all is required",
 	},
 	{
-		name:    "missing sets.matrix",
-		yaml:    "interface: wg0\nsets:\n  all: a\n",
-		wantErr: "sets.matrix is required",
+		name:    "missing sets.ip_matrix",
+		yaml:    "interface: wg0\nsets:\n  all: a\n  port_matrix: c\n",
+		wantErr: "sets.ip_matrix is required",
+	},
+	{
+		name:    "missing sets.port_matrix",
+		yaml:    "interface: wg0\nsets:\n  all: a\n  ip_matrix: b\n",
+		wantErr: "sets.port_matrix is required",
 	},
 	{
 		name:    "unknown field",
-		yaml:    "interface: wg0\nsets:\n  all: a\n  matrix: b\nextra: bad\n",
+		yaml:    "interface: wg0\nsets:\n  all: a\n  ip_matrix: b\n  port_matrix: c\nextra: bad\n",
 		wantErr: "not found in type",
 	},
 }

@@ -23,6 +23,16 @@ func TestParseModExpression_Valid(t *testing.T) {
 	}
 }
 
+func TestParseModExpression_AllowsResourceNames(t *testing.T) {
+	ops, err := parseModExpression("+ssh@sandbox,-dns@mailvm")
+	if err != nil {
+		t.Fatalf("parseModExpression: %v", err)
+	}
+	if len(ops) != 2 || !ops[0].Add || ops[0].Resource != "ssh@sandbox" || ops[1].Add || ops[1].Resource != "dns@mailvm" {
+		t.Errorf("ops = %+v, want resource add/delete", ops)
+	}
+}
+
 func TestParseModExpression_Invalid(t *testing.T) {
 	tests := []struct {
 		name string
@@ -94,6 +104,30 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 	}
 }
 
+func TestPlanModAccess_AddResourceCreatesPortDelta(t *testing.T) {
+	cfg := makeTestCfg()
+	db := makeTestDB()
+	db.Resources = map[string]ResourceEntry{
+		"ssh@sandbox": {VM: "sandbox", Ports: ResourcePorts{{Protocol: "tcp", Port: 22}}},
+	}
+	plan, err := planModAccess(cfg, db, "alice", []modAccessOp{{Add: true, Resource: "ssh@sandbox"}})
+	if err != nil {
+		t.Fatalf("planModAccess: %v", err)
+	}
+	found := false
+	for _, delta := range plan.IPSetDeltas {
+		if delta.Add &&
+			delta.Set == "wg_allow_matrix_ports" &&
+			delta.Entry == "10.8.0.10,tcp:22,192.168.122.100" &&
+			delta.Comment == "alice -> ssh@sandbox tcp/22" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("missing resource port delta: %+v", plan.IPSetDeltas)
+	}
+}
+
 func TestMod_RefusesMissingUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -109,7 +143,7 @@ func TestMod_RefusesMissingUser(t *testing.T) {
 	}
 }
 
-func TestMod_RefusesUnknownVM(t *testing.T) {
+func TestMod_RefusesUnknownAccessTarget(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
 	writeValidTestData(h, dir)
@@ -117,10 +151,10 @@ func TestMod_RefusesUnknownVM(t *testing.T) {
 	app, _, stderr := makeDeployApp(sys, "")
 	code := cmdMod(&globalFlags{configDir: dir}, []string{"alice", "+unknown"}, app)
 	if code == 0 {
-		t.Fatal("mod should fail for unknown VM")
+		t.Fatal("mod should fail for unknown access target")
 	}
-	if !strings.Contains(stderr.String(), "unknown VM") {
-		t.Errorf("expected unknown VM error, got: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "unknown access target") {
+		t.Errorf("expected unknown access target error, got: %s", stderr.String())
 	}
 }
 

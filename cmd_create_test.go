@@ -33,6 +33,7 @@ func TestParseCreateArgs(t *testing.T) {
 		{name: "supplied ip", args: []string{"carol", "10.8.0.20"}, wantName: "carol", wantIP: "10.8.0.20"},
 		{name: "supplied cidr ip", args: []string{"carol", "10.8.0.20/32"}, wantName: "carol", wantIP: "10.8.0.20"},
 		{name: "access without ip", args: []string{"carol", "sandbox,mailvm"}, wantName: "carol", wantAccess: "mailvm,sandbox"},
+		{name: "resource access without ip", args: []string{"carol", "ssh@sandbox"}, wantName: "carol", wantAccess: "ssh@sandbox"},
 		{name: "ip and access", args: []string{"carol", "10.8.0.20", "sandbox"}, wantName: "carol", wantIP: "10.8.0.20", wantAccess: "sandbox"},
 		{name: "comment before name", args: []string{"-c", " laptop replacement ", "carol"}, wantName: "carol", wantComment: "laptop replacement"},
 		{name: "comment after name", args: []string{"carol", "-c=temporary contractor"}, wantName: "carol", wantComment: "temporary contractor"},
@@ -125,6 +126,29 @@ func TestPlanCreateUser_SuppliedIPAndAccess(t *testing.T) {
 	}
 }
 
+func TestPlanCreateUser_ResourceAccessCreatesPortDelta(t *testing.T) {
+	db := makeTestDB()
+	db.Resources = map[string]ResourceEntry{
+		"ssh@sandbox": {VM: "sandbox", Ports: ResourcePorts{{Protocol: "tcp", Port: 22}}},
+	}
+	args := &createArgs{Name: "carol", IP: "10.8.0.20", Access: []string{"ssh@sandbox"}}
+	sys := newFakeSystem()
+	sys.subnetResult = "10.8.0.1/24"
+	sys.pubKeyResult = "CAROL_PUB="
+
+	plan, err := planCreateUser(makeTestCfg(), db, args, sys)
+	if err != nil {
+		t.Fatalf("planCreateUser: %v", err)
+	}
+	if len(plan.IPSetDeltas) != 1 {
+		t.Fatalf("len(ipset deltas) = %d, want 1: %+v", len(plan.IPSetDeltas), plan.IPSetDeltas)
+	}
+	delta := plan.IPSetDeltas[0]
+	if !delta.Add || delta.Set != "wg_allow_matrix_ports" || delta.Entry != "10.8.0.20,tcp:22,192.168.122.100" {
+		t.Errorf("delta = %+v, want port matrix add", delta)
+	}
+}
+
 func TestPlanCreateUser_RejectsDuplicateAndCaseConflict(t *testing.T) {
 	tests := []struct {
 		name string
@@ -144,13 +168,13 @@ func TestPlanCreateUser_RejectsDuplicateAndCaseConflict(t *testing.T) {
 	}
 }
 
-func TestPlanCreateUser_RejectsUnknownVM(t *testing.T) {
+func TestPlanCreateUser_RejectsUnknownAccessTarget(t *testing.T) {
 	sys := newFakeSystem()
 	sys.subnetResult = "10.8.0.1/24"
 	sys.pubKeyResult = "PUB="
 	_, err := planCreateUser(makeTestCfg(), makeTestDB(), &createArgs{Name: "carol", Access: []string{"unknown"}}, sys)
-	if err == nil || !strings.Contains(err.Error(), "unknown vm") {
-		t.Fatalf("error = %v, want unknown vm", err)
+	if err == nil || !strings.Contains(err.Error(), "unknown access target") {
+		t.Fatalf("error = %v, want unknown access target", err)
 	}
 }
 

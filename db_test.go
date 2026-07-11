@@ -71,6 +71,47 @@ vms:
 	}
 }
 
+func TestLoadDB_Resources(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	h.writeFile(dir, "db.yaml", `
+users:
+  alice:
+    ip: 10.8.0.10
+    pub: ALICE_PUB=
+vms:
+  sandbox: 192.168.122.100
+resources:
+  ssh@sandbox:
+    vm: sandbox
+    ports: 22
+    comment: shell access
+  dns@sandbox:
+    vm: sandbox
+    ports:
+      - udp:53
+      - tcp:53
+access:
+  alice:
+    - ssh@sandbox
+    - dns@sandbox
+`)
+	db, err := LoadDB(dir)
+	h.assertNoError(err)
+	ssh := db.Resources["ssh@sandbox"]
+	if ssh.VM != "sandbox" || ssh.Comment != "shell access" {
+		t.Errorf("ssh resource = %+v, want vm/comment", ssh)
+	}
+	if len(ssh.Ports) != 1 || ssh.Ports[0] != (ResourcePort{Protocol: "tcp", Port: 22}) {
+		t.Errorf("ssh ports = %+v, want tcp:22", ssh.Ports)
+	}
+	dns := db.Resources["dns@sandbox"]
+	wantDNS := ResourcePorts{{Protocol: "udp", Port: 53}, {Protocol: "tcp", Port: 53}}
+	if !reflect.DeepEqual(dns.Ports, wantDNS) {
+		t.Errorf("dns ports = %+v, want %+v", dns.Ports, wantDNS)
+	}
+}
+
 func TestLoadDB_FromTestdata(t *testing.T) {
 	_, err := LoadDB("testdata/valid-offline")
 	if err != nil {
@@ -129,9 +170,29 @@ var dbValidationTests = []struct {
 		wantErr: "invalid vm name",
 	},
 	{
-		name:    "access references unknown vm",
+		name:    "access references unknown target",
 		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\naccess:\n  alice:\n    - unknownvm\n",
+		wantErr: "unknown access target",
+	},
+	{
+		name:    "resource references unknown vm",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\nresources:\n  ssh@sandbox:\n    vm: missing\n    ports: 22\n",
 		wantErr: "unknown vm",
+	},
+	{
+		name:    "resource conflicts with vm",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\nresources:\n  sandbox:\n    vm: sandbox\n    ports: 22\n",
+		wantErr: "conflicts",
+	},
+	{
+		name:    "resource duplicate normalized port",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\nresources:\n  ssh@sandbox:\n    vm: sandbox\n    ports: [22, tcp:22]\n",
+		wantErr: "duplicate port",
+	},
+	{
+		name:    "vm name cannot contain at",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  ssh@sandbox: 192.168.122.100\n",
+		wantErr: "invalid vm name",
 	},
 	{
 		name:    "access references unknown user",
@@ -260,7 +321,7 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read db.yaml: %v", err)
 	}
-	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n    comment: temporary contractor\n    inactive: true\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
+	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n    comment: temporary contractor\n    inactive: true\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\nresources: {}\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
 	if string(data) != want {
 		t.Errorf("db.yaml =\n%s\nwant:\n%s", string(data), want)
 	}
@@ -278,14 +339,18 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 
 func TestCloneDBIsIndependent(t *testing.T) {
 	original := &DB{
-		Users:  map[string]UserEntry{"alice": {IP: "10.8.0.10", Pub: "ALICE"}},
-		VMs:    map[string]string{"sandbox": "192.168.122.100"},
+		Users: map[string]UserEntry{"alice": {IP: "10.8.0.10", Pub: "ALICE"}},
+		VMs:   map[string]string{"sandbox": "192.168.122.100"},
+		Resources: map[string]ResourceEntry{
+			"ssh@sandbox": {VM: "sandbox", Ports: ResourcePorts{{Protocol: "tcp", Port: 22}}},
+		},
 		Access: map[string][]string{"alice": {"sandbox"}},
 	}
 
 	cloned := cloneDB(original)
 	cloned.Users["alice"] = UserEntry{IP: "10.8.0.20", Pub: "CHANGED"}
 	cloned.VMs["sandbox"] = "192.168.122.200"
+	cloned.Resources["ssh@sandbox"] = ResourceEntry{VM: "sandbox", Ports: ResourcePorts{{Protocol: "tcp", Port: 2222}}}
 	cloned.Access["alice"][0] = "changed"
 
 	if original.Users["alice"].IP != "10.8.0.10" {
@@ -293,6 +358,9 @@ func TestCloneDBIsIndependent(t *testing.T) {
 	}
 	if original.VMs["sandbox"] != "192.168.122.100" {
 		t.Error("cloneDB() aliased the VMs map")
+	}
+	if original.Resources["ssh@sandbox"].Ports[0].Port != 22 {
+		t.Error("cloneDB() aliased the resources map")
 	}
 	if original.Access["alice"][0] != "sandbox" {
 		t.Error("cloneDB() aliased an access slice")

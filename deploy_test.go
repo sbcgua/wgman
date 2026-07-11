@@ -73,29 +73,42 @@ func TestInvertPeerDeltasReversesOrderAndOperation(t *testing.T) {
 func TestDiffExpectedIPSetsBuildsStableDeltas(t *testing.T) {
 	cfg := &Config{
 		Sets: ConfigSets{
-			All:    "wg_allow_all",
-			Matrix: "wg_allow_matrix",
+			All:        "wg_allow_all",
+			IPMatrix:   "wg_allow_matrix",
+			PortMatrix: "wg_allow_matrix_ports",
 		},
 	}
-	oldAll := map[string]string{
-		"10.8.0.5": "",
+	oldExpected := ExpectedIPSets{
+		All: map[string]string{
+			"10.8.0.5": "",
+		},
+		IPMatrix: map[string]string{
+			"10.8.0.10,192.168.122.100": "alice -> sandbox",
+		},
+		PortMatrix: map[string]string{
+			"10.8.0.10,tcp:22,192.168.122.100": "alice -> ssh@sandbox tcp/22",
+		},
 	}
-	oldMatrix := map[string]string{
-		"10.8.0.10,192.168.122.100": "alice -> sandbox",
-	}
-	newAll := map[string]string{
-		"10.8.0.6": "",
-	}
-	newMatrix := map[string]string{
-		"10.8.0.10,192.168.122.101": "alice -> mailvm",
+	newExpected := ExpectedIPSets{
+		All: map[string]string{
+			"10.8.0.6": "",
+		},
+		IPMatrix: map[string]string{
+			"10.8.0.10,192.168.122.101": "alice -> mailvm",
+		},
+		PortMatrix: map[string]string{
+			"10.8.0.10,udp:53,192.168.122.101": "alice -> dns@mailvm udp/53",
+		},
 	}
 
-	got := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
+	got := diffExpectedIPSets(cfg, oldExpected, newExpected)
 	want := []IpsetDeltaOp{
 		{Set: "wg_allow_all", Entry: "10.8.0.5"},
 		{Set: "wg_allow_all", Entry: "10.8.0.6", Add: true},
 		{Set: "wg_allow_matrix", Entry: "10.8.0.10,192.168.122.100", Comment: "alice -> sandbox"},
 		{Set: "wg_allow_matrix", Entry: "10.8.0.10,192.168.122.101", Comment: "alice -> mailvm", Add: true},
+		{Set: "wg_allow_matrix_ports", Entry: "10.8.0.10,tcp:22,192.168.122.100", Comment: "alice -> ssh@sandbox tcp/22"},
+		{Set: "wg_allow_matrix_ports", Entry: "10.8.0.10,udp:53,192.168.122.101", Comment: "alice -> dns@mailvm udp/53", Add: true},
 	}
 
 	if !reflect.DeepEqual(got, want) {

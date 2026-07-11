@@ -12,8 +12,9 @@ func makeTestCfg() *Config {
 	return &Config{
 		Interface: "wg0",
 		Sets: ConfigSets{
-			All:    "wg_allow_all",
-			Matrix: "wg_allow_matrix",
+			All:        "wg_allow_all",
+			IPMatrix:   "wg_allow_matrix",
+			PortMatrix: "wg_allow_matrix_ports",
 		},
 	}
 }
@@ -29,6 +30,7 @@ func makeTestDB() *DB {
 			"sandbox": "192.168.122.100",
 			"mailvm":  "192.168.122.101",
 		},
+		Resources: map[string]ResourceEntry{},
 		Access: map[string][]string{
 			"admin": {"*"},
 			"alice": {"sandbox"},
@@ -53,6 +55,8 @@ func buildCleanFakeSystem() *fakeSystem {
 			"add wg_allow_matrix 10.8.0.10,192.168.122.100 comment \"alice -> sandbox\"\n" +
 			"add wg_allow_matrix 10.8.0.15,192.168.122.100 comment \"bob -> sandbox\"\n" +
 			"add wg_allow_matrix 10.8.0.15,192.168.122.101 comment \"bob -> mailvm\"\n"
+	sys.ipsetResults["wg_allow_matrix_ports"] =
+		"create wg_allow_matrix_ports hash:ip,port,ip family inet comment\n"
 	return sys
 }
 
@@ -62,6 +66,35 @@ func makeInactiveBobDB() *DB {
 	bob.Inactive = true
 	db.Users["bob"] = bob
 	return db
+}
+
+func makeResourceDB() *DB {
+	db := makeTestDB()
+	db.Resources = map[string]ResourceEntry{
+		"ssh@sandbox": {
+			VM:    "sandbox",
+			Ports: ResourcePorts{{Protocol: "tcp", Port: 22}},
+		},
+		"dns@mailvm": {
+			VM:    "mailvm",
+			Ports: ResourcePorts{{Protocol: "udp", Port: 53}},
+		},
+	}
+	db.Access["alice"] = []string{"ssh@sandbox", "dns@mailvm"}
+	return db
+}
+
+func buildResourceCleanFakeSystem() *fakeSystem {
+	sys := buildCleanFakeSystem()
+	sys.ipsetResults["wg_allow_matrix"] =
+		"create wg_allow_matrix hash:net,net family inet comment\n" +
+			"add wg_allow_matrix 10.8.0.15,192.168.122.100 comment \"bob -> sandbox\"\n" +
+			"add wg_allow_matrix 10.8.0.15,192.168.122.101 comment \"bob -> mailvm\"\n"
+	sys.ipsetResults["wg_allow_matrix_ports"] =
+		"create wg_allow_matrix_ports hash:ip,port,ip family inet comment\n" +
+			"add wg_allow_matrix_ports 10.8.0.10,tcp:22,192.168.122.100 comment \"alice -> ssh@sandbox tcp/22\"\n" +
+			"add wg_allow_matrix_ports 10.8.0.10,udp:53,192.168.122.101 comment \"alice -> dns@mailvm udp/53\"\n"
+	return sys
 }
 
 func buildInactiveBobAbsentFakeSystem() *fakeSystem {
@@ -79,6 +112,22 @@ func buildInactiveBobAbsentFakeSystem() *fakeSystem {
 
 func TestCheck_CleanState(t *testing.T) {
 	result := Check(makeTestCfg(), makeTestDB(), buildCleanFakeSystem())
+	if len(result.HardErrors) != 0 {
+		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+	}
+	if len(result.Drift) != 0 {
+		t.Errorf("expected no drift, got: %v", result.Drift)
+	}
+	if len(result.IPSetDeltas) != 0 {
+		t.Errorf("expected no deltas, got: %v", result.IPSetDeltas)
+	}
+	if !result.OK() {
+		t.Error("expected OK()")
+	}
+}
+
+func TestCheck_CleanStateWithResourceAccess(t *testing.T) {
+	result := Check(makeTestCfg(), makeResourceDB(), buildResourceCleanFakeSystem())
 	if len(result.HardErrors) != 0 {
 		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
 	}
@@ -278,6 +327,33 @@ func TestCheck_MissingIPSetEntry(t *testing.T) {
 	}
 }
 
+func TestCheck_MissingPortMatrixEntry(t *testing.T) {
+	sys := buildResourceCleanFakeSystem()
+	sys.ipsetResults["wg_allow_matrix_ports"] =
+		"create wg_allow_matrix_ports hash:ip,port,ip family inet comment\n" +
+			"add wg_allow_matrix_ports 10.8.0.10,udp:53,192.168.122.101 comment \"alice -> dns@mailvm udp/53\"\n"
+
+	result := Check(makeTestCfg(), makeResourceDB(), sys)
+	if len(result.HardErrors) != 0 {
+		t.Errorf("expected no hard errors, got: %v", result.HardErrors)
+	}
+	if !anyContains(result.Drift, "missing entry 10.8.0.10,tcp:22,192.168.122.100") {
+		t.Errorf("expected drift about missing port entry, got: %v", result.Drift)
+	}
+	found := false
+	for _, d := range result.IPSetDeltas {
+		if d.Add && d.Entry == "10.8.0.10,tcp:22,192.168.122.100" {
+			found = true
+			if d.Comment != "alice -> ssh@sandbox tcp/22" {
+				t.Errorf("delta comment = %q, want resource comment", d.Comment)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected add delta for missing port entry, deltas: %v", result.IPSetDeltas)
+	}
+}
+
 func TestCheck_ExtraIPSetEntry(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	// Add a spurious entry to the all-access set.
@@ -333,49 +409,65 @@ func TestCheck_HardErrorsAndDriftSeparated(t *testing.T) {
 
 func TestComputeExpectedIPSets(t *testing.T) {
 	db := makeTestDB()
-	allExp, matrixExp := computeExpectedIPSets(db)
+	expected := computeExpectedIPSets(db)
 
-	if _, ok := allExp["10.8.0.5"]; !ok {
+	if _, ok := expected.All["10.8.0.5"]; !ok {
 		t.Error("expected admin ip in all-access set")
 	}
-	if len(allExp) != 1 {
-		t.Errorf("all-access set size = %d, want 1", len(allExp))
+	if len(expected.All) != 1 {
+		t.Errorf("all-access set size = %d, want 1", len(expected.All))
 	}
 
-	if _, ok := matrixExp["10.8.0.10,192.168.122.100"]; !ok {
+	if _, ok := expected.IPMatrix["10.8.0.10,192.168.122.100"]; !ok {
 		t.Error("expected alice->sandbox in matrix set")
 	}
-	if _, ok := matrixExp["10.8.0.15,192.168.122.100"]; !ok {
+	if _, ok := expected.IPMatrix["10.8.0.15,192.168.122.100"]; !ok {
 		t.Error("expected bob->sandbox in matrix set")
 	}
-	if _, ok := matrixExp["10.8.0.15,192.168.122.101"]; !ok {
+	if _, ok := expected.IPMatrix["10.8.0.15,192.168.122.101"]; !ok {
 		t.Error("expected bob->mailvm in matrix set")
 	}
-	if len(matrixExp) != 3 {
-		t.Errorf("matrix set size = %d, want 3", len(matrixExp))
+	if len(expected.IPMatrix) != 3 {
+		t.Errorf("matrix set size = %d, want 3", len(expected.IPMatrix))
 	}
-	if matrixExp["10.8.0.10,192.168.122.100"] != "alice -> sandbox" {
-		t.Errorf("comment = %q, want \"alice -> sandbox\"", matrixExp["10.8.0.10,192.168.122.100"])
+	if expected.IPMatrix["10.8.0.10,192.168.122.100"] != "alice -> sandbox" {
+		t.Errorf("comment = %q, want \"alice -> sandbox\"", expected.IPMatrix["10.8.0.10,192.168.122.100"])
+	}
+	if len(expected.PortMatrix) != 0 {
+		t.Errorf("port matrix set size = %d, want 0", len(expected.PortMatrix))
+	}
+}
+
+func TestComputeExpectedIPSets_IncludesResourcePorts(t *testing.T) {
+	expected := computeExpectedIPSets(makeResourceDB())
+	if _, ok := expected.IPMatrix["10.8.0.10,192.168.122.100"]; ok {
+		t.Error("resource access should not create a full-VM matrix entry")
+	}
+	if expected.PortMatrix["10.8.0.10,tcp:22,192.168.122.100"] != "alice -> ssh@sandbox tcp/22" {
+		t.Errorf("missing ssh resource port entry: %#v", expected.PortMatrix)
+	}
+	if expected.PortMatrix["10.8.0.10,udp:53,192.168.122.101"] != "alice -> dns@mailvm udp/53" {
+		t.Errorf("missing dns resource port entry: %#v", expected.PortMatrix)
 	}
 }
 
 func TestComputeExpectedIPSets_ExcludesInactiveUsers(t *testing.T) {
 	db := makeInactiveBobDB()
-	allExp, matrixExp := computeExpectedIPSets(db)
+	expected := computeExpectedIPSets(db)
 
-	if _, ok := allExp["10.8.0.5"]; !ok {
+	if _, ok := expected.All["10.8.0.5"]; !ok {
 		t.Error("expected active admin ip in all-access set")
 	}
-	if _, ok := matrixExp["10.8.0.10,192.168.122.100"]; !ok {
+	if _, ok := expected.IPMatrix["10.8.0.10,192.168.122.100"]; !ok {
 		t.Error("expected active alice entry in matrix set")
 	}
-	for entry := range matrixExp {
+	for entry := range expected.IPMatrix {
 		if strings.HasPrefix(entry, "10.8.0.15,") {
 			t.Errorf("inactive bob entry unexpectedly present: %s", entry)
 		}
 	}
-	if len(matrixExp) != 1 {
-		t.Errorf("matrix set size = %d, want 1", len(matrixExp))
+	if len(expected.IPMatrix) != 1 {
+		t.Errorf("matrix set size = %d, want 1", len(expected.IPMatrix))
 	}
 }
 
@@ -432,6 +524,20 @@ func TestCheck_MatrixWrongSetType(t *testing.T) {
 	}
 }
 
+func TestCheck_PortMatrixWrongSetType(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	sys.ipsetResults["wg_allow_matrix_ports"] =
+		"create wg_allow_matrix_ports hash:net,net family inet comment\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "hash:ip,port,ip") {
+		t.Errorf("expected hard error about wrong port matrix set type, got: %v", result.HardErrors)
+	}
+	if len(result.Drift) != 0 {
+		t.Errorf("expected no drift when set type is wrong, got: %v", result.Drift)
+	}
+}
+
 func TestCheck_AllAccessInvalidEntryShape(t *testing.T) {
 	sys := buildCleanFakeSystem()
 	// Add an IPv6 address as an all-access entry.
@@ -455,6 +561,18 @@ func TestCheck_MatrixInvalidEntryShape(t *testing.T) {
 	result := Check(makeTestCfg(), makeTestDB(), sys)
 	if !anyContains(result.HardErrors, "not two valid IPv4/net values") {
 		t.Errorf("expected hard error for invalid matrix entry, got: %v", result.HardErrors)
+	}
+}
+
+func TestCheck_PortMatrixInvalidEntryShape(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	sys.ipsetResults["wg_allow_matrix_ports"] =
+		"create wg_allow_matrix_ports hash:ip,port,ip family inet comment\n" +
+			"add wg_allow_matrix_ports 10.8.0.10,icmp:8,192.168.122.100\n"
+
+	result := Check(makeTestCfg(), makeTestDB(), sys)
+	if !anyContains(result.HardErrors, "invalid port") {
+		t.Errorf("expected hard error for invalid port matrix entry, got: %v", result.HardErrors)
 	}
 }
 

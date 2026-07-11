@@ -6,17 +6,19 @@ type Config struct {
 	Sets      ConfigSets `yaml:"sets"`
 }
 
-// ConfigSets names the two ipsets managed by wgman.
+// ConfigSets names the ipsets managed by wgman.
 type ConfigSets struct {
-	All    string `yaml:"all"`
-	Matrix string `yaml:"matrix"`
+	All        string `yaml:"all"`
+	IPMatrix   string `yaml:"ip_matrix"`
+	PortMatrix string `yaml:"port_matrix"`
 }
 
 // DB holds the contents of db.yaml.
 type DB struct {
-	Users  map[string]UserEntry `yaml:"users"`
-	VMs    map[string]string    `yaml:"vms"`
-	Access map[string][]string  `yaml:"access"`
+	Users     map[string]UserEntry     `yaml:"users"`
+	VMs       map[string]string        `yaml:"vms"`
+	Resources map[string]ResourceEntry `yaml:"resources"`
+	Access    map[string][]string      `yaml:"access"`
 }
 
 // UserEntry is one entry in the users section of db.yaml.
@@ -25,6 +27,29 @@ type UserEntry struct {
 	Pub      string `yaml:"pub"`
 	Comment  string `yaml:"comment,omitempty"`
 	Inactive bool   `yaml:"inactive,omitempty"`
+}
+
+// ResourceEntry defines a named VM service exposed through the port matrix.
+type ResourceEntry struct {
+	VM      string        `yaml:"vm"`
+	Ports   ResourcePorts `yaml:"ports"`
+	Comment string        `yaml:"comment,omitempty"`
+}
+
+// ResourcePort is one protocol/port pair for a resource.
+type ResourcePort struct {
+	Protocol string
+	Port     int
+}
+
+// ResourcePorts is the YAML representation of a resource port scalar or list.
+type ResourcePorts []ResourcePort
+
+// ExpectedIPSets holds desired entries for every managed ipset.
+type ExpectedIPSets struct {
+	All        map[string]string
+	IPMatrix   map[string]string
+	PortMatrix map[string]string
 }
 
 // IpsetDeltaOp describes one add or delete operation on an ipset.

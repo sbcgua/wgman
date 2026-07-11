@@ -31,7 +31,8 @@ func TestInitIPSets_CreatesAllAccessSet(t *testing.T) {
 interface: wg0
 sets:
   all: wg_allow_all
-  matrix: wg_allow_matrix
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
 `)
 
 	gf := &globalFlags{configDir: dir}
@@ -61,7 +62,8 @@ func TestInitIPSets_CreatesMatrixSet(t *testing.T) {
 interface: wg0
 sets:
   all: wg_allow_all
-  matrix: wg_allow_matrix
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
 `)
 
 	gf := &globalFlags{configDir: dir}
@@ -81,6 +83,37 @@ sets:
 	}
 }
 
+func TestInitIPSets_CreatesPortMatrixSet(t *testing.T) {
+	sys := newFakeSystem()
+	app, _, _ := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	h.writeFile(dir, "config.yaml", `
+interface: wg0
+sets:
+  all: wg_allow_all
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
+`)
+
+	gf := &globalFlags{configDir: dir}
+	code := cmdInitIPSets(gf, nil, app)
+	if code != 0 {
+		t.Fatalf("init-ipsets exit code = %d, want 0", code)
+	}
+
+	found := false
+	for _, op := range sys.appliedOps {
+		if op == "create:wg_allow_matrix_ports:hash:ip,port,ip:comment" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected port matrix set creation with comments, ops: %v", sys.appliedOps)
+	}
+}
+
 func TestInitIPSets_LoadsSetNamesFromConfig(t *testing.T) {
 	sys := newFakeSystem()
 	app, stdout, _ := makeInitIPSetsApp(sys)
@@ -91,7 +124,8 @@ func TestInitIPSets_LoadsSetNamesFromConfig(t *testing.T) {
 interface: wg0
 sets:
   all: custom_all_set
-  matrix: custom_matrix_set
+  ip_matrix: custom_matrix_set
+  port_matrix: custom_port_matrix_set
 `)
 
 	gf := &globalFlags{configDir: dir}
@@ -107,10 +141,14 @@ sets:
 	if !strings.Contains(out, "custom_matrix_set") {
 		t.Errorf("expected custom_matrix_set in output, got: %s", out)
 	}
+	if !strings.Contains(out, "custom_port_matrix_set") {
+		t.Errorf("expected custom_port_matrix_set in output, got: %s", out)
+	}
 
 	expected := []string{
 		"create:custom_all_set:hash:ip:nocomment",
 		"create:custom_matrix_set:hash:net,net:comment",
+		"create:custom_port_matrix_set:hash:ip,port,ip:comment",
 	}
 	for _, want := range expected {
 		found := false
@@ -177,7 +215,8 @@ func TestInitIPSets_IdempotentViaFakeAdapter(t *testing.T) {
 interface: wg0
 sets:
   all: wg_allow_all
-  matrix: wg_allow_matrix
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
 `)
 
 	gf := &globalFlags{configDir: dir}
@@ -200,7 +239,8 @@ func TestInitIPSets_PropagatesCreateError(t *testing.T) {
 interface: wg0
 sets:
   all: wg_allow_all
-  matrix: wg_allow_matrix
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
 `)
 
 	gf := &globalFlags{configDir: dir}
