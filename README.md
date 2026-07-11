@@ -2,7 +2,35 @@
 
 `wgman` is a command-line tool for managing WireGuard users and their access to internal VM resources through WireGuard peers and ipset-based firewall rules.
 
-Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md).
+**Briefly**: the tool allows controlling named WireGuard users and their access to internal resources based on a simple YAML config as well as list current WireGuard status in a friendlier form (e.g. with user names and access lists). See the available commands below. Detailed behavior is specified in [docs/SPEC.md](docs/SPEC.md).
+
+```yaml
+  users:
+    admin:
+      ip: 10.8.0.5
+      pub: ADMIN_PUB_KEY...
+    alice:
+      ip: 10.8.0.10
+      pub: ALICE_PUB_KEY...
+      comment: laptop replacement scheduled
+    bob:
+      ip: 10.8.0.15
+      pub: BOB_PUB_KEY...
+      inactive: true
+
+  vms:
+    sandbox: 192.168.122.100
+    mailvm: 192.168.122.101
+
+  access:
+    admin:
+      - "*"
+    alice:
+      - sandbox
+    bob:
+      - sandbox
+      - mailvm
+```
 
 ## Development Prerequisites
 
@@ -124,7 +152,7 @@ Show help:
 sudo wgman help
 ```
 
-Check config, WireGuard peers, and ipset state:
+Check config, WireGuard peers, and ipset state consistency:
 
 ```sh
 sudo wgman check
@@ -145,6 +173,13 @@ Show WireGuard peer status with user names:
 sudo wgman show
 # Suppress interactive color output:
 sudo wgman show --no-color
+```
+
+```text
+NAME       IP          ENDPOINT        RX        TX        LAST HANDSHAKE
+admin      10.8.0.5    180.90.91.48    117.69Mb  320.32Mb  1m35s
+alice      10.8.0.10   145.80.12.11    1.35Mb    6.88Mb    6h5m24s
+bob~       10.8.0.15   -               -         -         -
 ```
 
 Create the managed ipsets defined in `config.yaml`:
