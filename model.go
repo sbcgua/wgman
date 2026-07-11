@@ -35,13 +35,20 @@ type IpsetDeltaOp struct {
 	Add     bool   // true = add, false = delete
 }
 
+// WGPeerDeltaAction describes one WireGuard peer operation.
+type WGPeerDeltaAction string
+
+const (
+	WGPeerAdd    WGPeerDeltaAction = "add"
+	WGPeerRemove WGPeerDeltaAction = "remove"
+)
+
 // WGPeerDeltaOp describes one WireGuard peer reconciliation operation.
 type WGPeerDeltaOp struct {
-	User      string // db username
-	PubKey    string // WireGuard public key
-	AllowedIP string // WireGuard allowed IP for add operations
-	Add       bool   // true = add peer
-	Remove    bool   // true = remove peer
+	User      string            // db username
+	PubKey    string            // WireGuard public key
+	AllowedIP string            // WireGuard allowed IP; required so remove operations can be inverted
+	Action    WGPeerDeltaAction // add or remove peer
 }
 
 // CheckResult is the structured result returned by the internal check routine.

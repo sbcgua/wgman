@@ -293,14 +293,10 @@ func TestCreate_WGSetFailureRemovesConfigAndDoesNotWriteDB(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "carol.vpn.conf")); !os.IsNotExist(err) {
 		t.Fatalf("generated config should be removed after WGSetPeer failure, stat err: %v", err)
 	}
-	foundRollback := false
 	for _, op := range sys.appliedOps {
-		if op == "wgdel:wg0:CAROL_PUBLIC=" {
-			foundRollback = true
+		if strings.HasPrefix(op, "wgdel:") {
+			t.Errorf("failed peer add should not be rolled back as completed state, got: %v", sys.appliedOps)
 		}
-	}
-	if !foundRollback {
-		t.Errorf("expected rollback WGDelPeer after WGSetPeer failure, got: %v", sys.appliedOps)
 	}
 	if !strings.Contains(stderr.String(), "permission") {
 		t.Errorf("expected permission error, got: %s", stderr.String())

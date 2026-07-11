@@ -18,10 +18,10 @@ func printCheckErrors(result *CheckResult, w io.Writer) {
 	if len(result.PeerDeltas) > 0 {
 		fmt.Fprintln(w, "check: WireGuard drift:")
 		for _, d := range result.PeerDeltas {
-			switch {
-			case d.Add:
+			switch d.Action {
+			case WGPeerAdd:
 				fmt.Fprintf(w, "  - active user %q peer is absent and can be added\n", d.User)
-			case d.Remove:
+			case WGPeerRemove:
 				fmt.Fprintf(w, "  - inactive user %q peer is present and can be removed\n", d.User)
 			}
 		}
@@ -53,10 +53,10 @@ func printDeltas(deltas []IpsetDeltaOp, w io.Writer) {
 // operations to w.
 func printPeerDeltas(deltas []WGPeerDeltaOp, w io.Writer) {
 	for _, d := range deltas {
-		switch {
-		case d.Add:
+		switch d.Action {
+		case WGPeerAdd:
 			fmt.Fprintf(w, "  add wg peer %s %s %s\n", d.User, d.PubKey, d.AllowedIP)
-		case d.Remove:
+		case WGPeerRemove:
 			fmt.Fprintf(w, "  remove wg peer %s %s\n", d.User, d.PubKey)
 		}
 	}

@@ -1,19 +1,19 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
 
 type removePlan struct {
-	UpdatedDB *DB
-	Deltas    []IpsetDeltaOp
-	User      string
-	IP        string
-	Pub       string
-	Access    []string
+	UpdatedDB  *DB
+	Deltas     []IpsetDeltaOp
+	PeerDeltas []WGPeerDeltaOp
+	User       string
+	IP         string
+	Pub        string
+	Access     []string
 }
 
 func cmdRemove(gf *globalFlags, args []string, app *App) int {
@@ -73,31 +73,14 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 }
 
 func applyRemoveUserPlan(configDir, iface string, plan *removePlan, sys SystemAdapter) (applyErr, rollbackErr error) {
-	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, sys)
+	applied, err := ApplyStateDeltasTracked(iface, plan.Deltas, plan.PeerDeltas, sys)
 	if err != nil {
-		return err, ApplyDeltas(InvertDeltas(appliedDeltas), sys)
-	}
-	if err := sys.WGDelPeer(iface, plan.Pub); err != nil {
-		return err, ApplyDeltas(InvertDeltas(appliedDeltas), sys)
+		return err, RollbackStateDeltas(iface, applied, sys)
 	}
 	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
-		return err, rollbackRemoveLiveState(iface, plan.Pub, plan.IP, appliedDeltas, sys)
+		return err, RollbackStateDeltas(iface, applied, sys)
 	}
 	return nil, nil
-}
-
-func rollbackRemoveLiveState(iface, pubKey, ip string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
-	var errs []string
-	if err := sys.WGSetPeer(iface, pubKey, ip); err != nil {
-		errs = append(errs, err.Error())
-	}
-	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
-		errs = append(errs, err.Error())
-	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
 }
 
 func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
@@ -124,11 +107,12 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	access := append([]string(nil), db.Access[user]...)
 	sort.Strings(access)
 	return &removePlan{
-		UpdatedDB: updated,
-		Deltas:    deltas,
-		User:      user,
-		IP:        entry.IP,
-		Pub:       entry.Pub,
-		Access:    access,
+		UpdatedDB:  updated,
+		Deltas:     deltas,
+		PeerDeltas: []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}},
+		User:       user,
+		IP:         entry.IP,
+		Pub:        entry.Pub,
+		Access:     access,
 	}, nil
 }

@@ -127,7 +127,7 @@ func TestCheck_InactiveUserPresentInWGProducesPeerDelta(t *testing.T) {
 		t.Fatalf("peer deltas = %+v, want one", result.PeerDeltas)
 	}
 	delta := result.PeerDeltas[0]
-	if delta.User != "bob" || delta.PubKey != "BOB_PUB=" || !delta.Remove {
+	if delta.User != "bob" || delta.PubKey != "BOB_PUB=" || delta.AllowedIP != "10.8.0.15" || delta.Action != WGPeerRemove {
 		t.Errorf("peer delta = %+v, want bob removal", delta)
 	}
 	if result.OK() {
@@ -212,7 +212,7 @@ func TestCheck_MissingActiveWGPeerProducesPeerDelta(t *testing.T) {
 		t.Fatalf("peer deltas = %+v, want one", result.PeerDeltas)
 	}
 	delta := result.PeerDeltas[0]
-	if delta.User != "alice" || delta.PubKey != "ALICE_PUB=" || delta.AllowedIP != "10.8.0.10" || !delta.Add {
+	if delta.User != "alice" || delta.PubKey != "ALICE_PUB=" || delta.AllowedIP != "10.8.0.10" || delta.Action != WGPeerAdd {
 		t.Errorf("peer delta = %+v, want alice add", delta)
 	}
 	if result.OK() {

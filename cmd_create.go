@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -20,6 +19,7 @@ type createArgs struct {
 type createPlan struct {
 	UpdatedDB  *DB
 	Deltas     []IpsetDeltaOp
+	PeerDeltas []WGPeerDeltaOp
 	ClientIP   string
 	PrivateKey string
 	PubKey     string
@@ -220,35 +220,28 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 }
 
 func applyCreateUserPlan(configDir, iface, clientConfigPath string, plan *createPlan, sys SystemAdapter) (applyErr, rollbackErr error) {
-	if err := sys.WGSetPeer(iface, plan.PubKey, plan.ClientIP); err != nil {
-		return err, rollbackCreateLiveState(iface, plan.PubKey, clientConfigPath, nil, sys)
-	}
-
-	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, sys)
+	applied, err := ApplyStateDeltasTracked(iface, plan.Deltas, plan.PeerDeltas, sys)
 	if err != nil {
-		return err, rollbackCreateLiveState(iface, plan.PubKey, clientConfigPath, appliedDeltas, sys)
+		return err, rollbackCreateLiveState(iface, clientConfigPath, applied, sys)
 	}
 
 	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
-		return err, rollbackCreateLiveState(iface, plan.PubKey, clientConfigPath, appliedDeltas, sys)
+		return err, rollbackCreateLiveState(iface, clientConfigPath, applied, sys)
 	}
 
 	return nil, nil
 }
 
-func rollbackCreateLiveState(iface, pubKey, clientConfigPath string, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
+func rollbackCreateLiveState(iface, clientConfigPath string, applied AppliedStateDeltas, sys SystemAdapter) error {
 	var errs []string
-	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
-		errs = append(errs, err.Error())
-	}
-	if err := sys.WGDelPeer(iface, pubKey); err != nil {
+	if err := RollbackStateDeltas(iface, applied, sys); err != nil {
 		errs = append(errs, err.Error())
 	}
 	if err := os.Remove(clientConfigPath); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, err.Error())
 	}
 	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }
@@ -329,6 +322,7 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, sys SystemAdapter) (*
 	return &createPlan{
 		UpdatedDB:  updated,
 		Deltas:     deltas,
+		PeerDeltas: []WGPeerDeltaOp{{User: args.Name, PubKey: pubKey, AllowedIP: clientIP, Action: WGPeerAdd}},
 		ClientIP:   clientIP,
 		PrivateKey: privKey,
 		PubKey:     pubKey,

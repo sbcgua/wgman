@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -13,11 +12,10 @@ type modAccessOp struct {
 }
 
 type modTogglePlan struct {
-	UpdatedDB *DB
-	Deltas    []IpsetDeltaOp
-	PeerAdd   *WGPeerDeltaOp
-	PeerDel   *WGPeerDeltaOp
-	NoOp      bool
+	UpdatedDB  *DB
+	Deltas     []IpsetDeltaOp
+	PeerDeltas []WGPeerDeltaOp
+	NoOp       bool
 }
 
 // parseModExpression parses comma-separated access edits such as
@@ -145,21 +143,11 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 	}
 
 	changeCount := len(plan.Deltas)
-	if plan.PeerAdd != nil {
-		changeCount++
-	}
-	if plan.PeerDel != nil {
-		changeCount++
-	}
+	changeCount += len(plan.PeerDeltas)
 
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
 	printDeltas(plan.Deltas, app.Stdout)
-	if plan.PeerAdd != nil {
-		printPeerDeltas([]WGPeerDeltaOp{*plan.PeerAdd}, app.Stdout)
-	}
-	if plan.PeerDel != nil {
-		printPeerDeltas([]WGPeerDeltaOp{*plan.PeerDel}, app.Stdout)
-	}
+	printPeerDeltas(plan.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {
 		fmt.Fprintln(app.Stdout, "mod: dry-run, no changes applied")
@@ -168,13 +156,13 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 
 	appliedDeltas, liveErr := applyModToggleLive(cfg.Interface, plan, app.Sys)
 	if liveErr != nil {
-		rollbackErr := rollbackModToggleLive(cfg.Interface, plan, appliedDeltas, app.Sys)
+		rollbackErr := rollbackModToggleLive(cfg.Interface, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, liveErr, rollbackErr)
 		return 1
 	}
 
 	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		rollbackErr := rollbackModToggleLive(cfg.Interface, plan, appliedDeltas, app.Sys)
+		rollbackErr := rollbackModToggleLive(cfg.Interface, appliedDeltas, app.Sys)
 		printApplyAndRollbackError(app.Stderr, err, rollbackErr)
 		return 1
 	}
@@ -228,53 +216,19 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 		Deltas:    diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
 	}
 	if action == "activate" {
-		plan.PeerAdd = &WGPeerDeltaOp{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Add: true}
+		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerAdd}}
 	} else {
-		plan.PeerDel = &WGPeerDeltaOp{User: user, PubKey: entry.Pub, Remove: true}
+		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}}
 	}
 	return plan, nil
 }
 
-func applyModToggleLive(iface string, plan *modTogglePlan, sys SystemAdapter) ([]IpsetDeltaOp, error) {
-	if plan.PeerAdd != nil {
-		if err := ApplyPeerDeltas(iface, []WGPeerDeltaOp{*plan.PeerAdd}, sys); err != nil {
-			return nil, err
-		}
-	}
-
-	appliedDeltas, err := ApplyDeltasTracked(plan.Deltas, sys)
-	if err != nil {
-		return appliedDeltas, err
-	}
-
-	if plan.PeerDel != nil {
-		if err := ApplyPeerDeltas(iface, []WGPeerDeltaOp{*plan.PeerDel}, sys); err != nil {
-			return appliedDeltas, err
-		}
-	}
-	return appliedDeltas, nil
+func applyModToggleLive(iface string, plan *modTogglePlan, sys SystemAdapter) (AppliedStateDeltas, error) {
+	return ApplyStateDeltasTracked(iface, plan.Deltas, plan.PeerDeltas, sys)
 }
 
-func rollbackModToggleLive(iface string, plan *modTogglePlan, appliedDeltas []IpsetDeltaOp, sys SystemAdapter) error {
-	var errs []string
-	if plan.PeerDel != nil {
-		user := plan.UpdatedDB.Users[plan.PeerDel.User]
-		if err := sys.WGSetPeer(iface, plan.PeerDel.PubKey, user.IP); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if err := ApplyDeltas(InvertDeltas(appliedDeltas), sys); err != nil {
-		errs = append(errs, err.Error())
-	}
-	if plan.PeerAdd != nil {
-		if err := sys.WGDelPeer(iface, plan.PeerAdd.PubKey); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
+func rollbackModToggleLive(iface string, applied AppliedStateDeltas, sys SystemAdapter) error {
+	return RollbackStateDeltas(iface, applied, sys)
 }
 
 func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []IpsetDeltaOp, error) {

@@ -50,6 +50,26 @@ func TestInvertDeltasReversesOrderAndOperation(t *testing.T) {
 	}
 }
 
+func TestInvertPeerDeltasReversesOrderAndOperation(t *testing.T) {
+	deltas := []WGPeerDeltaOp{
+		{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Action: WGPeerAdd},
+		{User: "bob", PubKey: "BOB", AllowedIP: "10.8.0.15", Action: WGPeerRemove},
+	}
+
+	got := InvertPeerDeltas(deltas)
+	want := []WGPeerDeltaOp{
+		{User: "bob", PubKey: "BOB", AllowedIP: "10.8.0.15", Action: WGPeerAdd},
+		{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Action: WGPeerRemove},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("InvertPeerDeltas() = %#v, want %#v", got, want)
+	}
+	if deltas[0].Action != WGPeerAdd || deltas[1].Action != WGPeerRemove {
+		t.Error("InvertPeerDeltas() modified its input")
+	}
+}
+
 func TestDiffExpectedIPSetsBuildsStableDeltas(t *testing.T) {
 	cfg := &Config{
 		Sets: ConfigSets{
@@ -102,8 +122,8 @@ func TestApplyStateDeltasUsesDependencyOrder(t *testing.T) {
 		{Set: "allow", Entry: "10.8.0.20"},
 	}
 	peerDeltas := []WGPeerDeltaOp{
-		{User: "bob", PubKey: "BOB", Remove: true},
-		{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Add: true},
+		{User: "bob", PubKey: "BOB", AllowedIP: "10.8.0.20", Action: WGPeerRemove},
+		{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Action: WGPeerAdd},
 	}
 
 	if err := ApplyStateDeltas("wg0", ipsetDeltas, peerDeltas, sys); err != nil {
@@ -129,8 +149,8 @@ func TestApplyStateDeltasStopsBeforePeerRemovalOnIPSetError(t *testing.T) {
 		"wg0",
 		[]IpsetDeltaOp{{Set: "allow", Entry: "10.8.0.10", Add: true}},
 		[]WGPeerDeltaOp{
-			{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Add: true},
-			{User: "bob", PubKey: "BOB", Remove: true},
+			{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Action: WGPeerAdd},
+			{User: "bob", PubKey: "BOB", AllowedIP: "10.8.0.20", Action: WGPeerRemove},
 		},
 		sys,
 	)
@@ -139,6 +159,61 @@ func TestApplyStateDeltasStopsBeforePeerRemovalOnIPSetError(t *testing.T) {
 		t.Fatalf("ApplyStateDeltas() error = %v, want add failure", err)
 	}
 	want := []string{"wgset:wg0:ALICE:10.8.0.10"}
+	if !reflect.DeepEqual(sys.appliedOps, want) {
+		t.Errorf("applied operations = %#v, want %#v", sys.appliedOps, want)
+	}
+}
+
+func TestApplyStateDeltasTrackedReturnsCompletedOperations(t *testing.T) {
+	sys := newFakeSystem()
+	sys.wgDelErr = errors.New("delete failed")
+	ipsetDeltas := []IpsetDeltaOp{
+		{Set: "allow", Entry: "10.8.0.10", Comment: "alice", Add: true},
+	}
+	peerDeltas := []WGPeerDeltaOp{
+		{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Action: WGPeerAdd},
+		{User: "bob", PubKey: "BOB", AllowedIP: "10.8.0.20", Action: WGPeerRemove},
+	}
+
+	applied, err := ApplyStateDeltasTracked("wg0", ipsetDeltas, peerDeltas, sys)
+
+	if err == nil || !strings.Contains(err.Error(), "delete failed") {
+		t.Fatalf("ApplyStateDeltasTracked() error = %v, want delete failure", err)
+	}
+	if !reflect.DeepEqual(applied.PeerAdds, peerDeltas[:1]) {
+		t.Errorf("PeerAdds = %#v, want %#v", applied.PeerAdds, peerDeltas[:1])
+	}
+	if !reflect.DeepEqual(applied.IPSetDeltas, ipsetDeltas) {
+		t.Errorf("IPSetDeltas = %#v, want %#v", applied.IPSetDeltas, ipsetDeltas)
+	}
+	if len(applied.PeerRemoves) != 0 {
+		t.Errorf("PeerRemoves = %#v, want none", applied.PeerRemoves)
+	}
+}
+
+func TestRollbackStateDeltasUsesReverseDependencyOrder(t *testing.T) {
+	sys := newFakeSystem()
+	applied := AppliedStateDeltas{
+		PeerAdds: []WGPeerDeltaOp{
+			{User: "alice", PubKey: "ALICE", AllowedIP: "10.8.0.10", Action: WGPeerAdd},
+		},
+		IPSetDeltas: []IpsetDeltaOp{
+			{Set: "allow", Entry: "10.8.0.10", Comment: "alice", Add: true},
+		},
+		PeerRemoves: []WGPeerDeltaOp{
+			{User: "bob", PubKey: "BOB", AllowedIP: "10.8.0.20", Action: WGPeerRemove},
+		},
+	}
+
+	if err := RollbackStateDeltas("wg0", applied, sys); err != nil {
+		t.Fatalf("RollbackStateDeltas() error = %v", err)
+	}
+
+	want := []string{
+		"wgset:wg0:BOB:10.8.0.20",
+		"del:allow:10.8.0.10",
+		"wgdel:wg0:ALICE",
+	}
 	if !reflect.DeepEqual(sys.appliedOps, want) {
 		t.Errorf("applied operations = %#v, want %#v", sys.appliedOps, want)
 	}

@@ -48,6 +48,9 @@ future changes. They intentionally omit implementation history.
 - `CheckResult.PeerDeltas` holds safe WireGuard peer operations for known DB
   users, such as adding missing active peers and removing live peers for
   inactive users.
+- WireGuard peer deltas use an explicit action and always carry `AllowedIP`,
+  including remove operations. Rollback inverts peer deltas without consulting
+  DB state, so remove deltas must keep the last intended allowed IP.
 - `deploy` may reconcile ipset drift and known-user peer drift when there are
   no hard errors.
 - `create`, `remove`, `mod`, `list`, and `show` require a fully clean
@@ -119,6 +122,9 @@ future changes. They intentionally omit implementation history.
   WireGuard peer removals. Activation repair therefore restores the peer before
   access entries, and inactive cleanup deletes managed ipset entries before
   removing the live peer.
+- Command rollback uses the same state delta engine as forward application:
+  completed peer removals are re-added, completed ipset changes are inverted,
+  and completed peer additions are removed.
 - `mod <user> activate` and `mod <user> deactivate` succeed as no-ops when the
   user is already in the requested state.
 - Inactive toggles apply live changes before committing `db.yaml`; failed live

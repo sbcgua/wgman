@@ -3,7 +3,16 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
+
+// AppliedStateDeltas records live operations that completed before a state
+// apply returned. It is suitable for dependency-aware rollback.
+type AppliedStateDeltas struct {
+	PeerAdds    []WGPeerDeltaOp
+	IPSetDeltas []IpsetDeltaOp
+	PeerRemoves []WGPeerDeltaOp
+}
 
 // ApplyDeltas applies ipset add/delete operations from deltas through sys.
 // Operations are applied in order; the first error encountered is returned.
@@ -86,43 +95,101 @@ func diffExpectedIPSet(setname string, oldExpected, newExpected map[string]strin
 // ApplyPeerDeltas applies WireGuard peer operations from deltas through sys.
 // Operations are applied in order; the first error encountered is returned.
 func ApplyPeerDeltas(iface string, deltas []WGPeerDeltaOp, sys SystemAdapter) error {
+	_, err := ApplyPeerDeltasTracked(iface, deltas, sys)
+	return err
+}
+
+// ApplyPeerDeltasTracked applies peer deltas and returns the operations that
+// completed before any error. Callers can invert those operations for
+// best-effort rollback.
+func ApplyPeerDeltasTracked(iface string, deltas []WGPeerDeltaOp, sys SystemAdapter) ([]WGPeerDeltaOp, error) {
+	applied := make([]WGPeerDeltaOp, 0, len(deltas))
 	for _, d := range deltas {
-		switch {
-		case d.Add:
+		switch d.Action {
+		case WGPeerAdd:
 			if err := sys.WGSetPeer(iface, d.PubKey, d.AllowedIP); err != nil {
-				return fmt.Errorf("add WireGuard peer for %q: %w", d.User, err)
+				return applied, fmt.Errorf("add WireGuard peer for %q: %w", d.User, err)
 			}
-		case d.Remove:
+		case WGPeerRemove:
 			if err := sys.WGDelPeer(iface, d.PubKey); err != nil {
-				return fmt.Errorf("remove WireGuard peer for %q: %w", d.User, err)
+				return applied, fmt.Errorf("remove WireGuard peer for %q: %w", d.User, err)
 			}
+		default:
+			return applied, fmt.Errorf("unknown WireGuard peer delta action %q for %q", d.Action, d.User)
 		}
+		applied = append(applied, d)
 	}
-	return nil
+	return applied, nil
+}
+
+// InvertPeerDeltas returns inverse peer operations in reverse order for
+// rollback.
+func InvertPeerDeltas(deltas []WGPeerDeltaOp) []WGPeerDeltaOp {
+	inverted := make([]WGPeerDeltaOp, 0, len(deltas))
+	for i := len(deltas) - 1; i >= 0; i-- {
+		d := deltas[i]
+		switch d.Action {
+		case WGPeerAdd:
+			d.Action = WGPeerRemove
+		case WGPeerRemove:
+			d.Action = WGPeerAdd
+		}
+		inverted = append(inverted, d)
+	}
+	return inverted
 }
 
 // ApplyStateDeltas applies WireGuard and ipset operations in a dependency-aware
 // order: peer additions, ipset changes, then peer removals.
 func ApplyStateDeltas(iface string, ipsetDeltas []IpsetDeltaOp, peerDeltas []WGPeerDeltaOp, sys SystemAdapter) error {
-	if err := ApplyPeerDeltas(iface, filterPeerDeltas(peerDeltas, true), sys); err != nil {
-		return err
+	_, err := ApplyStateDeltasTracked(iface, ipsetDeltas, peerDeltas, sys)
+	return err
+}
+
+// ApplyStateDeltasTracked applies WireGuard and ipset operations in a
+// dependency-aware order and returns the completed operations for rollback.
+func ApplyStateDeltasTracked(iface string, ipsetDeltas []IpsetDeltaOp, peerDeltas []WGPeerDeltaOp, sys SystemAdapter) (AppliedStateDeltas, error) {
+	var applied AppliedStateDeltas
+	var err error
+
+	applied.PeerAdds, err = ApplyPeerDeltasTracked(iface, filterPeerDeltas(peerDeltas, WGPeerAdd), sys)
+	if err != nil {
+		return applied, err
 	}
-	if err := ApplyDeltas(ipsetDeltas, sys); err != nil {
-		return err
+	applied.IPSetDeltas, err = ApplyDeltasTracked(ipsetDeltas, sys)
+	if err != nil {
+		return applied, err
 	}
-	if err := ApplyPeerDeltas(iface, filterPeerDeltas(peerDeltas, false), sys); err != nil {
-		return err
+	applied.PeerRemoves, err = ApplyPeerDeltasTracked(iface, filterPeerDeltas(peerDeltas, WGPeerRemove), sys)
+	if err != nil {
+		return applied, err
+	}
+	return applied, nil
+}
+
+// RollbackStateDeltas rolls back completed state operations in reverse
+// dependency order: peer removals, ipset changes, then peer additions.
+func RollbackStateDeltas(iface string, applied AppliedStateDeltas, sys SystemAdapter) error {
+	var errs []string
+	if err := ApplyPeerDeltas(iface, InvertPeerDeltas(applied.PeerRemoves), sys); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := ApplyDeltas(InvertDeltas(applied.IPSetDeltas), sys); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := ApplyPeerDeltas(iface, InvertPeerDeltas(applied.PeerAdds), sys); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }
 
-func filterPeerDeltas(deltas []WGPeerDeltaOp, add bool) []WGPeerDeltaOp {
+func filterPeerDeltas(deltas []WGPeerDeltaOp, action WGPeerDeltaAction) []WGPeerDeltaOp {
 	out := make([]WGPeerDeltaOp, 0, len(deltas))
 	for _, d := range deltas {
-		if add && d.Add {
-			out = append(out, d)
-		}
-		if !add && d.Remove {
+		if d.Action == action {
 			out = append(out, d)
 		}
 	}

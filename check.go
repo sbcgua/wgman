@@ -81,9 +81,10 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		if u.Inactive {
 			if ok {
 				result.PeerDeltas = append(result.PeerDeltas, WGPeerDeltaOp{
-					User:   name,
-					PubKey: u.Pub,
-					Remove: true,
+					User:      name,
+					PubKey:    u.Pub,
+					AllowedIP: u.IP,
+					Action:    WGPeerRemove,
 				})
 			}
 			continue
@@ -93,7 +94,7 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 				User:      name,
 				PubKey:    u.Pub,
 				AllowedIP: u.IP,
-				Add:       true,
+				Action:    WGPeerAdd,
 			})
 			continue
 		}
