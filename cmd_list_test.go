@@ -163,8 +163,12 @@ func TestRunList_FilterInactiveUserNameGreyWithColor(t *testing.T) {
 func TestRunList_ColorizesResourcePortPrefixes(t *testing.T) {
 	db := makeResourceDB()
 	db.Resources["dns@mailvm"] = ResourceEntry{
-		VM:    "mailvm",
-		Ports: ResourcePorts{{Protocol: "udp", Port: 53}, {Protocol: "tcp", Port: 53}},
+		VM: "mailvm",
+		Ports: ResourcePorts{
+			{Protocol: "udp", Port: 53},
+			{Protocol: "tcp", Port: 8080},
+			{Protocol: "tcp", Port: 8081},
+		},
 	}
 	var buf strings.Builder
 	code := runListWithColor(db, &CheckResult{}, "", &buf, io.Discard, true)
@@ -172,14 +176,17 @@ func TestRunList_ColorizesResourcePortPrefixes(t *testing.T) {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	out := buf.String()
-	if !strings.Contains(out, ansiPink+"tcp:"+ansiReset+"53") {
+	if !strings.Contains(out, ansiPink+"tcp:"+ansiReset+"8080,8081") {
 		t.Errorf("expected pink tcp prefix, got:\n%s", out)
 	}
 	if !strings.Contains(out, ansiCyan+"udp:"+ansiReset+"53") {
 		t.Errorf("expected cyan udp prefix, got:\n%s", out)
 	}
-	if !strings.Contains(stripANSI(out), "tcp:53,udp:53") {
-		t.Errorf("expected plain sorted ports after stripping ANSI, got:\n%s", stripANSI(out))
+	if !strings.Contains(stripANSI(out), "tcp:8080,8081 udp:53") {
+		t.Errorf("expected grouped sorted ports after stripping ANSI, got:\n%s", stripANSI(out))
+	}
+	if strings.Contains(stripANSI(out), "8081,udp") {
+		t.Errorf("expected space, not comma, between protocol groups, got:\n%s", stripANSI(out))
 	}
 }
 

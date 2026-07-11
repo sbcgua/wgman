@@ -102,29 +102,39 @@ func formatResourcePorts(ports ResourcePorts, color bool) string {
 	if len(ports) == 0 {
 		return "(none)"
 	}
-	parts := make([]string, 0, len(ports))
+	byProtocol := make(map[string][]int)
 	for _, port := range ports {
-		parts = append(parts, port.String())
+		byProtocol[port.Protocol] = append(byProtocol[port.Protocol], port.Port)
 	}
-	sort.Strings(parts)
-	for i, part := range parts {
-		parts[i] = formatResourcePort(part, color)
+	protocols := sortedKeys(byProtocol)
+	groups := make([]string, 0, len(protocols))
+	for _, protocol := range protocols {
+		sort.Ints(byProtocol[protocol])
+		groups = append(groups, formatResourcePortGroup(protocol, byProtocol[protocol], color))
 	}
-	return strings.Join(parts, ",")
+	return strings.Join(groups, " ")
 }
 
-func formatResourcePort(port string, color bool) string {
+func formatResourcePortGroup(protocol string, ports []int, color bool) string {
+	prefix := protocol + ":"
 	if !color {
-		return port
+		return prefix + joinPorts(ports)
 	}
-	switch {
-	case strings.HasPrefix(port, "tcp:"):
-		return colorPink("tcp:") + strings.TrimPrefix(port, "tcp:")
-	case strings.HasPrefix(port, "udp:"):
-		return colorCyan("udp:") + strings.TrimPrefix(port, "udp:")
-	default:
-		return port
+	switch protocol {
+	case "tcp":
+		prefix = colorPink(prefix)
+	case "udp":
+		prefix = colorCyan(prefix)
 	}
+	return prefix + joinPorts(ports)
+}
+
+func joinPorts(ports []int) string {
+	parts := make([]string, 0, len(ports))
+	for _, port := range ports {
+		parts = append(parts, fmt.Sprint(port))
+	}
+	return strings.Join(parts, ",")
 }
 
 func formatAccessSummary(vms []string, color bool) string {
