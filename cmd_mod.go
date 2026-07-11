@@ -86,25 +86,25 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 2
 	}
 
-	updated, deltas, err := planModAccess(cfg, db, args[0], ops)
+	updatedDb, ipsetDeltas, err := planModAccess(cfg, db, args[0], ops)
 	if err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
-	dbChanged := !slices.Equal(db.Access[args[0]], updated.Access[args[0]])
-	if len(deltas) == 0 && !dbChanged {
+	dbChanged := !slices.Equal(db.Access[args[0]], updatedDb.Access[args[0]])
+	if len(ipsetDeltas) == 0 && !dbChanged {
 		fmt.Fprintln(app.Stdout, "mod: no changes needed")
 		return 0
 	}
 
-	changeCount := len(deltas)
-	if dbChanged && len(deltas) == 0 {
+	changeCount := len(ipsetDeltas)
+	if dbChanged && len(ipsetDeltas) == 0 {
 		changeCount = 1
 	}
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
-	if len(deltas) > 0 {
-		printIPSetDeltas(deltas, app.Stdout)
+	if len(ipsetDeltas) > 0 {
+		printIPSetDeltas(ipsetDeltas, app.Stdout)
 	} else {
 		fmt.Fprintf(app.Stdout, "  update db access for %s\n", args[0])
 	}
@@ -114,11 +114,11 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 		return 0
 	}
 
-	if err := saveDBAtomic(gf.configDir, updated); err != nil {
+	if err := saveDBAtomic(gf.configDir, updatedDb); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
-	if err := ApplyDeltas(deltas, app.Sys); err != nil {
+	if err := ApplyIPSetDeltas(ipsetDeltas, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
@@ -239,15 +239,15 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 		return nil, nil, fmt.Errorf("user %q not found", user)
 	}
 
-	updated := cloneDB(db)
+	updatedDb := cloneDB(db)
 	accessSet := map[string]bool{}
-	for _, resource := range updated.Access[user] {
+	for _, resource := range updatedDb.Access[user] {
 		accessSet[resource] = true
 	}
 
 	for _, op := range ops {
 		if op.Resource != "*" {
-			if _, ok := updated.VMs[op.Resource]; !ok {
+			if _, ok := updatedDb.VMs[op.Resource]; !ok {
 				return nil, nil, fmt.Errorf("unknown VM %q", op.Resource)
 			}
 		}
@@ -258,14 +258,14 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*DB, []
 		}
 	}
 
-	updated.Access[user] = normalizeAccessSet(accessSet)
-	normalizeDBAccess(updated)
-	if errs := validateDB(updated); len(errs) > 0 {
+	updatedDb.Access[user] = normalizeAccessSet(accessSet)
+	normalizeDBAccess(updatedDb)
+	if errs := validateDB(updatedDb); len(errs) > 0 {
 		return nil, nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
 
 	oldAll, oldMatrix := computeExpectedIPSets(db)
-	newAll, newMatrix := computeExpectedIPSets(updated)
-	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
-	return updated, deltas, nil
+	newAll, newMatrix := computeExpectedIPSets(updatedDb)
+	ipsetDeltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
+	return updatedDb, ipsetDeltas, nil
 }

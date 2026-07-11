@@ -14,16 +14,17 @@ type AppliedStateDeltas struct {
 	PeerRemoves []WGPeerDeltaOp
 }
 
-// ApplyDeltas applies ipset add/delete operations from deltas through sys.
+// ApplyIPSetDeltas applies ipset add/delete operations from deltas through sys.
 // Operations are applied in order; the first error encountered is returned.
-func ApplyDeltas(deltas []IpsetDeltaOp, sys SystemAdapter) error {
-	_, err := ApplyDeltasTracked(deltas, sys)
+func ApplyIPSetDeltas(deltas []IpsetDeltaOp, sys SystemAdapter) error {
+	_, err := ApplyIPSetDeltasTracked(deltas, sys)
 	return err
 }
 
-// ApplyDeltasTracked applies deltas and returns the operations that completed
-// before any error. Callers can invert those operations for best-effort rollback.
-func ApplyDeltasTracked(deltas []IpsetDeltaOp, sys SystemAdapter) ([]IpsetDeltaOp, error) {
+// ApplyIPSetDeltasTracked applies deltas and returns the operations that
+// completed before any error. Callers can invert those operations for
+// best-effort rollback.
+func ApplyIPSetDeltasTracked(deltas []IpsetDeltaOp, sys SystemAdapter) ([]IpsetDeltaOp, error) {
 	applied := make([]IpsetDeltaOp, 0, len(deltas))
 	for _, d := range deltas {
 		if d.Add {
@@ -40,8 +41,8 @@ func ApplyDeltasTracked(deltas []IpsetDeltaOp, sys SystemAdapter) ([]IpsetDeltaO
 	return applied, nil
 }
 
-// InvertDeltas returns inverse operations in reverse order for rollback.
-func InvertDeltas(deltas []IpsetDeltaOp) []IpsetDeltaOp {
+// InvertIPSetDeltas returns inverse operations in reverse order for rollback.
+func InvertIPSetDeltas(deltas []IpsetDeltaOp) []IpsetDeltaOp {
 	inverted := make([]IpsetDeltaOp, 0, len(deltas))
 	for i := len(deltas) - 1; i >= 0; i-- {
 		d := deltas[i]
@@ -156,7 +157,7 @@ func ApplyStateDeltasTracked(iface string, ipsetDeltas []IpsetDeltaOp, peerDelta
 	if err != nil {
 		return applied, err
 	}
-	applied.IPSetDeltas, err = ApplyDeltasTracked(ipsetDeltas, sys)
+	applied.IPSetDeltas, err = ApplyIPSetDeltasTracked(ipsetDeltas, sys)
 	if err != nil {
 		return applied, err
 	}
@@ -174,7 +175,7 @@ func RollbackStateDeltas(iface string, applied AppliedStateDeltas, sys SystemAda
 	if err := ApplyPeerDeltas(iface, InvertPeerDeltas(applied.PeerRemoves), sys); err != nil {
 		errs = append(errs, err.Error())
 	}
-	if err := ApplyDeltas(InvertDeltas(applied.IPSetDeltas), sys); err != nil {
+	if err := ApplyIPSetDeltas(InvertIPSetDeltas(applied.IPSetDeltas), sys); err != nil {
 		errs = append(errs, err.Error())
 	}
 	if err := ApplyPeerDeltas(iface, InvertPeerDeltas(applied.PeerAdds), sys); err != nil {

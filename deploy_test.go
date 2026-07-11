@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestApplyDeltasTrackedStopsAtFirstError(t *testing.T) {
+func TestApplyIPSetDeltasTrackedStopsAtFirstError(t *testing.T) {
 	sys := newFakeSystem()
 	sys.ipsetDelErr = errors.New("delete failed")
 	deltas := []IpsetDeltaOp{
@@ -16,13 +16,13 @@ func TestApplyDeltasTrackedStopsAtFirstError(t *testing.T) {
 		{Set: "allow", Entry: "10.8.0.30", Add: true},
 	}
 
-	applied, err := ApplyDeltasTracked(deltas, sys)
+	applied, err := ApplyIPSetDeltasTracked(deltas, sys)
 
 	if err == nil || !strings.Contains(err.Error(), "delete failed") {
-		t.Fatalf("ApplyDeltasTracked() error = %v, want delete failure", err)
+		t.Fatalf("ApplyIPSetDeltasTracked() error = %v, want delete failure", err)
 	}
 	if !reflect.DeepEqual(applied, deltas[:1]) {
-		t.Errorf("ApplyDeltasTracked() applied = %#v, want %#v", applied, deltas[:1])
+		t.Errorf("ApplyIPSetDeltasTracked() applied = %#v, want %#v", applied, deltas[:1])
 	}
 	wantOps := []string{"add:allow:10.8.0.10:alice"}
 	if !reflect.DeepEqual(sys.appliedOps, wantOps) {
@@ -30,23 +30,23 @@ func TestApplyDeltasTrackedStopsAtFirstError(t *testing.T) {
 	}
 }
 
-func TestInvertDeltasReversesOrderAndOperation(t *testing.T) {
+func TestInvertIPSetDeltasReversesOrderAndOperation(t *testing.T) {
 	deltas := []IpsetDeltaOp{
 		{Set: "allow", Entry: "10.8.0.10", Comment: "alice", Add: true},
 		{Set: "allow", Entry: "10.8.0.20"},
 	}
 
-	got := InvertDeltas(deltas)
+	got := InvertIPSetDeltas(deltas)
 	want := []IpsetDeltaOp{
 		{Set: "allow", Entry: "10.8.0.20", Add: true},
 		{Set: "allow", Entry: "10.8.0.10", Comment: "alice"},
 	}
 
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("InvertDeltas() = %#v, want %#v", got, want)
+		t.Errorf("InvertIPSetDeltas() = %#v, want %#v", got, want)
 	}
 	if !deltas[0].Add || deltas[1].Add {
-		t.Error("InvertDeltas() modified its input")
+		t.Error("InvertIPSetDeltas() modified its input")
 	}
 }
 
