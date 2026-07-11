@@ -25,7 +25,7 @@ the current state without relying on chat history.
   layout, `wgman-rs` binary target, initial `App`/`SystemAdapter` shape, fake
   test support, and smoke tests are in place.
 - Phase 2 implementation completed and review findings are resolved.
-- Phase 3 may start after the Phase 2 implementation commit.
+- Phase 3 implementation completed, reviewed, verified, and ready to commit.
 
 ## Decisions Captured
 
@@ -119,3 +119,33 @@ the current state without relying on chat history.
 - Fixed the Phase 2 review findings locally and reran all Phase 2 checks.
 - Next step: start Phase 3 with a medium-reasoning worker agent after the
   Phase 2 implementation commit.
+
+### Phase 3: Parsers, Formatting, And Utility Functions
+
+- Implemented WireGuard dump parsing in `src/parse_wg.rs`, including server
+  line parsing, peer rows, numeric field errors, IPv4 `/32` allowed-IP
+  normalization, `(none)` endpoint preservation, and rejection of multiple
+  allowed IPs.
+- Implemented ipset save parsing in `src/parse_ipset.rs`, including create
+  set name/type parsing, add entries, optional comments with spaces, empty
+  sets, duplicate create/add-before-create errors, trailing-content errors,
+  and create/add set-name mismatch errors.
+- Added Phase 3 utilities in `src/utils.rs`: endpoint host stripping,
+  split-lines helper, confirmation prompt helper, IPv4/CIDR validation,
+  IPv4 CIDR parsing, IPv4/u32 conversion, alongside existing sorted keys and
+  ASCII case fold helpers.
+- Implemented formatting in `src/format.rs`: ANSI color helpers, visible-width
+  table writer, byte formatting/coloring, handshake age parts, and plain/color
+  handshake formatting.
+- Added `tests/phase3.rs` covering Go parity cases from parser, formatter, and
+  utility tests.
+- Updated Rust implementation notes with Phase 3 parser/format conventions.
+- Local acceptance checks passed:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- High-reasoning review agent `Godel` found no Phase 3 issues. Residual risk:
+  Go reference tests could not be run because `go` is not installed in this
+  environment.
+- Next step after commit: start Phase 4 with a medium-reasoning worker agent.

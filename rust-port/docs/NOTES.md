@@ -50,6 +50,30 @@ version.
   `serde`, `serde_yaml`, and `tempfile` for typed YAML loading and same-dir
   atomic DB writes.
 
+## Parsers, Utilities, And Formatting
+
+- `parse_wg` parses `wg show <interface> dump` output into the server public
+  key and peer rows. Peer allowed IPs normalize IPv4 `/32` values to plain
+  addresses, keep non-`/32` CIDRs unchanged, preserve `(none)` endpoints, and
+  reject multiple allowed IPs for one managed peer.
+- `parse_ipset` parses `ipset list <set> -o save` output, including the
+  `create` set name/type and `add` entries with optional comments containing
+  spaces. Add lines before a create line, duplicate create lines, unexpected
+  trailing content, and create/add set-name mismatches are parse errors.
+- Phase 3 parser functions return `Result<_, String>` to match the simple
+  error style already used by config and DB validation. Later phases may wrap
+  these strings in richer command or check errors if needed.
+- Utility helpers now cover sorted string keys, endpoint host stripping,
+  non-empty line splitting with CR trimming, confirmation prompts, IPv4/CIDR
+  validation, IPv4 CIDR parsing, IPv4/u32 conversion, and ASCII case folding.
+- Formatting helpers own explicit ANSI escape sequences. `write_table` sizes
+  columns from each cell's plain text and writes each cell's display text, so
+  color escapes do not affect visible alignment.
+- Byte formatting uses Go-compatible binary units and two decimal places for
+  `Kb`, `Mb`, and `Gb`. Handshake formatting clamps future timestamps to `0s`,
+  renders timestamp `0` as `never`, and colorizes the same day/minute
+  components as the Go implementation.
+
 ## Config And DB
 
 - `config.yaml` and `db.yaml` loading rejects unknown fields with serde
