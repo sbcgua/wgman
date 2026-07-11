@@ -60,6 +60,30 @@ impl SystemAdapter for RealSystemAdapter {
     fn ipset_list(&self, set_name: &str) -> Result<String, String> {
         command_stdout("ipset", &["list", set_name, "-o", "save"])
     }
+
+    fn ipset_add(&self, set_name: &str, entry: &str, comment: &str) -> Result<(), String> {
+        let mut args = vec!["add", set_name, entry];
+        if !comment.is_empty() {
+            args.extend(["comment", comment]);
+        }
+        command_ok("ipset", &args)
+    }
+
+    fn ipset_del(&self, set_name: &str, entry: &str) -> Result<(), String> {
+        command_ok("ipset", &["del", set_name, entry])
+    }
+
+    fn wg_set_peer(&self, iface: &str, pub_key: &str, allowed_ip: &str) -> Result<(), String> {
+        let allowed_ip = format!("{allowed_ip}/32");
+        command_ok(
+            "wg",
+            &["set", iface, "peer", pub_key, "allowed-ips", &allowed_ip],
+        )
+    }
+
+    fn wg_del_peer(&self, iface: &str, pub_key: &str) -> Result<(), String> {
+        command_ok("wg", &["set", iface, "peer", pub_key, "remove"])
+    }
 }
 
 fn command_stdout(program: &str, args: &[&str]) -> Result<String, String> {
@@ -71,6 +95,17 @@ fn command_stdout(program: &str, args: &[&str]) -> Result<String, String> {
         return Err(command_stderr(program, &output));
     }
     String::from_utf8(output.stdout).map_err(|err| format!("{program} output is not UTF-8: {err}"))
+}
+
+fn command_ok(program: &str, args: &[&str]) -> Result<(), String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("run {program}: {err}"))?;
+    if !output.status.success() {
+        return Err(command_stderr(program, &output));
+    }
+    Ok(())
 }
 
 fn command_stderr(program: &str, output: &std::process::Output) -> String {

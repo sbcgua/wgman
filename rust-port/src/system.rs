@@ -7,4 +7,8 @@ pub trait SystemAdapter {
     fn interface_subnet(&self, iface: &str) -> Result<String, String>;
     fn wg_dump(&self, iface: &str) -> Result<String, String>;
     fn ipset_list(&self, set_name: &str) -> Result<String, String>;
+    fn ipset_add(&self, set_name: &str, entry: &str, comment: &str) -> Result<(), String>;
+    fn ipset_del(&self, set_name: &str, entry: &str) -> Result<(), String>;
+    fn wg_set_peer(&self, iface: &str, pub_key: &str, allowed_ip: &str) -> Result<(), String>;
+    fn wg_del_peer(&self, iface: &str, pub_key: &str) -> Result<(), String>;
 }

@@ -105,6 +105,29 @@ version.
   add/delete `IPSetDelta` values. Hard errors, drift, ipset deltas, and peer
   deltas are sorted before return for stable output and tests.
 
+## Deploy And Rollback
+
+- `deploy.rs` applies already-planned live-state deltas and remains free of
+  CLI orchestration, file loading, prompts, and DB mutation.
+- Ipset deltas are applied in caller-provided order and tracked after each
+  successful live operation. Application stops at the first error.
+- Tracked apply errors carry both the completed operations and the error
+  message so callers can perform best-effort rollback.
+- Ipset rollback inverts completed deltas in reverse order while preserving
+  comments on add entries so a deleted expected entry can be restored.
+- `diff_expected_ipsets` compares old/new `ExpectedIPSets` and returns stable
+  deltas sorted by set name, entry, and operation, with deletes before adds for
+  the same set and entry.
+- WireGuard peer deltas are applied in caller-provided order and tracked after
+  each successful live operation. Add calls `wg set ... allowed-ips`; remove
+  calls `wg set ... remove`.
+- Peer rollback inverts completed deltas in reverse order and preserves
+  `allowed_ip` on remove inversions so deleted peers can be restored.
+- Full state application uses the Go dependency order: peer additions, ipset
+  changes, then peer removals.
+- Full rollback uses reverse dependency order: re-add completed peer removals,
+  invert completed ipset changes, then remove completed peer additions.
+
 ## Config And DB
 
 - `config.yaml` and `db.yaml` loading rejects unknown fields with serde

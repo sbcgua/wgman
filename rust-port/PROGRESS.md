@@ -26,7 +26,8 @@ the current state without relying on chat history.
   test support, and smoke tests are in place.
 - Phase 2 implementation completed and review findings are resolved.
 - Phase 3 implementation completed, reviewed, and verified.
-- Phase 4 implementation completed, reviewed, verified, and ready to commit.
+- Phase 4 implementation completed, reviewed, and verified.
+- Phase 5 implementation completed, reviewed, verified, and ready to commit.
 
 ## Decisions Captured
 
@@ -187,3 +188,26 @@ the current state without relying on chat history.
   - `cargo clippy --all-targets -- -D warnings`
   - `make check`
 - Next step after commit: start Phase 5 with a medium-reasoning worker agent.
+
+### Phase 5: Deploy Engine And Rollback
+
+- Implemented the deploy engine in `src/deploy.rs`: tracked ipset apply,
+  ipset inversion, expected-ipset diffing, tracked WireGuard peer apply, peer
+  inversion, full dependency-ordered state apply, and reverse dependency-order
+  rollback.
+- Extended `SystemAdapter` and `RealSystemAdapter` with mutation methods for
+  ipset add/delete and WireGuard peer add/remove.
+- Extended the Rust test fake with mutation error injection and operation
+  recording.
+- Added `tests/phase5.rs` covering Go deploy test parity for partial
+  failures, stable diffs, dependency ordering, completed operation tracking,
+  and rollback ordering.
+- Local acceptance checks passed:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- High-reasoning review agent `Ampere` found no Phase 5 issues. Residual risk:
+  real `wg`/`ipset` mutation paths are covered by code review and fake-system
+  tests but not exercised against real Linux tools in this environment.
+- Next step after commit: start Phase 6 with a medium-reasoning worker agent.

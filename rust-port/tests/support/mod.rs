@@ -11,6 +11,12 @@ pub struct FakeSystem {
     pub wg_dump_error: Option<String>,
     pub ipset_results: std::collections::HashMap<String, String>,
     pub ipset_errors: std::collections::HashMap<String, String>,
+    pub ipset_add_error: Option<String>,
+    pub ipset_del_error: Option<String>,
+    pub ipset_del_errors: std::collections::HashMap<String, String>,
+    pub wg_set_error: Option<String>,
+    pub wg_del_error: Option<String>,
+    pub applied_ops: std::cell::RefCell<Vec<String>>,
 }
 
 impl SystemAdapter for FakeSystem {
@@ -49,5 +55,48 @@ impl SystemAdapter for FakeSystem {
                 .cloned()
                 .unwrap_or_default()),
         }
+    }
+
+    fn ipset_add(&self, set_name: &str, entry: &str, comment: &str) -> Result<(), String> {
+        if let Some(err) = &self.ipset_add_error {
+            return Err(err.clone());
+        }
+        self.applied_ops
+            .borrow_mut()
+            .push(format!("add:{set_name}:{entry}:{comment}"));
+        Ok(())
+    }
+
+    fn ipset_del(&self, set_name: &str, entry: &str) -> Result<(), String> {
+        if let Some(err) = &self.ipset_del_error {
+            return Err(err.clone());
+        }
+        if let Some(err) = self.ipset_del_errors.get(&format!("{set_name}:{entry}")) {
+            return Err(err.clone());
+        }
+        self.applied_ops
+            .borrow_mut()
+            .push(format!("del:{set_name}:{entry}"));
+        Ok(())
+    }
+
+    fn wg_set_peer(&self, iface: &str, pub_key: &str, allowed_ip: &str) -> Result<(), String> {
+        if let Some(err) = &self.wg_set_error {
+            return Err(err.clone());
+        }
+        self.applied_ops
+            .borrow_mut()
+            .push(format!("wgset:{iface}:{pub_key}:{allowed_ip}"));
+        Ok(())
+    }
+
+    fn wg_del_peer(&self, iface: &str, pub_key: &str) -> Result<(), String> {
+        if let Some(err) = &self.wg_del_error {
+            return Err(err.clone());
+        }
+        self.applied_ops
+            .borrow_mut()
+            .push(format!("wgdel:{iface}:{pub_key}"));
+        Ok(())
     }
 }
