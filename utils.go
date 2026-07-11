@@ -44,6 +44,7 @@ func splitLines(s string) []string {
 	return lines
 }
 
+// confirmAction prints prompt and returns true only for a trimmed "y" or "Y".
 func confirmAction(in io.Reader, out io.Writer, prompt string) bool {
 	fmt.Fprint(out, prompt)
 	scanner := bufio.NewScanner(in)
@@ -61,6 +62,30 @@ func isValidIPv4OrCIDR(s string) bool {
 	}
 	_, ipNet, err := net.ParseCIDR(s)
 	return err == nil && ipNet.IP.To4() != nil
+}
+
+// parseIPv4CIDR parses an IPv4 CIDR string and returns the host IP and network.
+func parseIPv4CIDR(subnet string) (net.IP, *net.IPNet, error) {
+	ip, ipNet, err := net.ParseCIDR(subnet)
+	if err != nil || ip.To4() == nil {
+		return nil, nil, fmt.Errorf("invalid interface subnet %q", subnet)
+	}
+	ones, bits := ipNet.Mask.Size()
+	if ones < 0 || bits != 32 {
+		return nil, nil, fmt.Errorf("interface subnet %q is not IPv4", subnet)
+	}
+	return ip, ipNet, nil
+}
+
+// ipv4ToUint32 converts an IPv4 address to its big-endian integer form.
+func ipv4ToUint32(ip net.IP) uint32 {
+	ip4 := ip.To4()
+	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
+}
+
+// uint32ToIPv4 converts a big-endian IPv4 integer to dotted decimal form.
+func uint32ToIPv4(n uint32) string {
+	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n)).String()
 }
 
 // caseFold lowercases ASCII letters for case-insensitive comparison.

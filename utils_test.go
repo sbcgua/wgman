@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,6 +38,42 @@ func TestIsValidIPv4OrCIDR(t *testing.T) {
 		if got := isValidIPv4OrCIDR(tc.input); got != tc.want {
 			t.Errorf("isValidIPv4OrCIDR(%q) = %v, want %v", tc.input, got, tc.want)
 		}
+	}
+}
+
+func TestParseIPv4CIDR(t *testing.T) {
+	ip, ipNet, err := parseIPv4CIDR("10.8.0.1/24")
+	if err != nil {
+		t.Fatalf("parseIPv4CIDR: %v", err)
+	}
+	if ip.String() != "10.8.0.1" {
+		t.Errorf("ip = %q, want 10.8.0.1", ip.String())
+	}
+	if got := ipNet.String(); got != "10.8.0.0/24" {
+		t.Errorf("ipNet = %q, want 10.8.0.0/24", got)
+	}
+}
+
+func TestParseIPv4CIDRRejectsInvalidInput(t *testing.T) {
+	tests := []string{
+		"not-a-cidr",
+		"2001:db8::1/64",
+	}
+	for _, input := range tests {
+		if _, _, err := parseIPv4CIDR(input); err == nil {
+			t.Errorf("parseIPv4CIDR(%q) succeeded, want error", input)
+		}
+	}
+}
+
+func TestIPv4Uint32Conversion(t *testing.T) {
+	ip := net.ParseIP("10.8.0.16")
+	n := ipv4ToUint32(ip)
+	if n != 0x0a080010 {
+		t.Errorf("ipv4ToUint32() = %#x, want 0x0a080010", n)
+	}
+	if got := uint32ToIPv4(n); got != "10.8.0.16" {
+		t.Errorf("uint32ToIPv4() = %q, want 10.8.0.16", got)
 	}
 }
 

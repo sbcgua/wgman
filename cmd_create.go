@@ -369,24 +369,3 @@ func allocateNextUserIP(subnet string, db *DB) (string, error) {
 	}
 	return uint32ToIPv4(uint32(next)), nil
 }
-
-func parseIPv4CIDR(subnet string) (net.IP, *net.IPNet, error) {
-	ip, ipNet, err := net.ParseCIDR(subnet)
-	if err != nil || ip.To4() == nil {
-		return nil, nil, fmt.Errorf("invalid interface subnet %q", subnet)
-	}
-	ones, bits := ipNet.Mask.Size()
-	if ones < 0 || bits != 32 {
-		return nil, nil, fmt.Errorf("interface subnet %q is not IPv4", subnet)
-	}
-	return ip, ipNet, nil
-}
-
-func ipv4ToUint32(ip net.IP) uint32 {
-	ip4 := ip.To4()
-	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
-}
-
-func uint32ToIPv4(n uint32) string {
-	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n)).String()
-}
