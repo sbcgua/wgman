@@ -11,8 +11,8 @@ The idea is to add another concept to the confguration - "resource" (or maybe "s
 
 Tehcnically, add a separate port-aware ipset for service-limited access, preferably:
 
-- `hash:ip,net,port` for TCP/UDP rules where the source VPN IP, destination VM IP/CIDR, and destination port are matched together.
-- the set must be referred in the `env.yaml` as `port_matrix`
+- `hash:ip,port,ip` for TCP/UDP rules where the source VPN IP, destination port, and destination VM IP are matched together.
+- the set must be referred in `config.yaml` as `port_matrix`
 - the current `matrix` attribute should be renamed to `ip_matrix`
 
 Example shape:
@@ -82,3 +82,18 @@ Other considerations:
 - `wgman-firewall-hook.template` must be updated with the final version if `iptables` call
 - init-ipsets should create the new set as well
 - check and deploy logic should be concentrated in the `check` and `deploy` files respectively, the rest of the commands should delegate the validation and application of rules to them (as it is now). Presumably, VMs and Resources look similar to commands, so their maintenance will mainly hapen internally in `check`, `deploy` and `db` logic areas.
+
+## Interview findings
+
+The following decisions were agreed during planning and should guide implementation and review:
+
+- `sets.matrix` should be renamed to `sets.ip_matrix` as a breaking schema change. No backward-compatible `sets.matrix` alias is needed.
+- `sets.port_matrix` should be required by `config.yaml`.
+- `init-ipsets` must create the all-access, IP matrix, and port matrix ipsets.
+- Access entries should refer to VMs and resources in the same way. VMs and resources share one access-target namespace, so exact and case-only conflicts between VM and resource names must be rejected. `*` remains reserved for all-access/admin.
+- User and VM names should keep the existing `^[A-Za-z0-9_-]+$` rule. Only resource names should allow `@`, using `^[A-Za-z0-9_@-]+$`.
+- Resource ports should accept a scalar or list. Each port may be an integer, numeric string, or protocol-prefixed string with `tcp:` or `udp:`. Unprefixed ports mean TCP. Port `0`, ports outside `1..65535`, unknown protocols, non-numeric ports, empty port lists, and duplicates after protocol normalization must be rejected.
+- Full VM access should keep the existing behavior: it grants full-VM forwarding through the IP matrix set, including the firewall hook's TCP and ICMP rules.
+- Resource access should grant only TCP/UDP port-specific forwarding through the port matrix set. Resource access does not grant ICMP.
+- The firewall hook should stay generic: it wires rules for configured sets, while the service policy lives in `db.yaml` and managed ipset entries.
+- `wgman list` should include resources as a separate section. User access summaries and filtered user access should show mixed VM/resource names exactly as configured.
