@@ -105,6 +105,35 @@ version.
   add/delete `IPSetDelta` values. Hard errors, drift, ipset deltas, and peer
   deltas are sorted before return for stable output and tests.
 
+## Read-Only Commands
+
+- Phase 6 implements hand-written CLI parsing to preserve Go behavior where
+  global flags may appear before or immediately after the command name.
+- No args, `help`, `-h`, `--help`, and command-local help flags print the
+  static Go-compatible help text and exit `0`.
+- Unknown commands and argument/usage errors exit `2`. `check`, `list`, and
+  `show` reject `--dry-run`; mutation commands remain intentionally
+  unsupported in this phase.
+- `--config-dir`, `--yes`, `--dry-run`, `--no-color`, and create/add-only `-c`
+  are parsed globally. Go-style single-dash long global flags and explicit
+  boolean assignments such as `--dry-run=false` are accepted. `-c` on
+  non-create/add commands and empty trimmed comments are usage errors.
+- Root checks live in command handlers before config/db loading. Core engines
+  remain root-agnostic and fakeable.
+- `check` loads config/db, runs the check engine, prints hard errors,
+  WireGuard drift, ipset drift, and a final `check: OK` or `check: FAILED`
+  status. Planned delta details are reserved for deploy/remove/mod planning
+  paths. Status color follows stdout/stderr TTY detection unless `--no-color`
+  is set.
+- `list` requires a clean check result, then prints users, VMs, resources, or
+  an optional user access filter. It preserves inactive `~` suffixes and
+  colorizes admin/none/VM/resource markers only on interactive stdout unless
+  `--no-color` is set.
+- `show` requires a clean check result and parsed WireGuard data, maps peers
+  back to DB users, strips endpoint ports, formats byte counters and handshake
+  ages, appends inactive `~` suffixes, and colorizes selected values only on
+  interactive stdout unless `--no-color` is set.
+
 ## Deploy And Rollback
 
 - `deploy.rs` applies already-planned live-state deltas and remains free of

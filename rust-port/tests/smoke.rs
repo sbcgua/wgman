@@ -54,5 +54,8 @@ fn unsupported_command_is_usage_error() {
 
     assert_eq!(code, 2);
     assert_eq!(stdout, "");
-    assert_eq!(stderr, "unsupported command: unknown\n");
+    assert_eq!(
+        stderr,
+        "wgman-rs: unknown command \"unknown\"\nRun 'wgman-rs help' for usage.\n"
+    );
 }

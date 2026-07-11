@@ -28,7 +28,7 @@ the current state without relying on chat history.
 - Phase 3 implementation completed, reviewed, and verified.
 - Phase 4 implementation completed, reviewed, and verified.
 - Phase 5 implementation completed, reviewed, verified, and committed.
-- Phase 5 follow-up ordering fix completed and ready to commit.
+- Phase 6 implementation completed, reviewed, and verified.
 
 ## Decisions Captured
 
@@ -211,16 +211,54 @@ the current state without relying on chat history.
 - High-reasoning review agent `Ampere` found no Phase 5 issues. Residual risk:
   real `wg`/`ipset` mutation paths are covered by code review and fake-system
   tests but not exercised against real Linux tools in this environment.
-- Phase 5 committed as `237140d`.
-- The original Phase 5 worker was interrupted after the commit. A replacement
-  medium-reasoning worker `Boyle` inspected the current state, kept the patch
-  structure, and made one parity fix: `diff_expected_ipsets` now sorts delete
+- During parent review, `diff_expected_ipsets` was adjusted to sort delete
   operations before add operations for matching set/entry keys, matching the
   Go comparator. A regression test covers the ordering.
-- Follow-up checks passed:
+- Phase 5 committed as `237140d`.
+- Next step after the Phase 5 commit: start Phase 6 with a medium-reasoning
+  worker agent.
+
+### Phase 6: Read-Only Commands
+
+- Implemented Go-compatible CLI help text, global flag parsing, command
+  dispatch, no-args/help behavior, unknown-command exit code `2`, and
+  create/add-only `-c` parsing validation.
+- Implemented `check`, `list`, and `show` handlers under `src/commands/`.
+  Handlers enforce root checks, load config/db, run the existing check engine,
+  and keep command logic thin.
+- Added output helpers for check findings, future planned ipset delta output,
+  and colored status output.
+- `check` reports hard errors, WireGuard drift, ipset drift, and final
+  OK/FAILED status with TTY-aware color. Planned delta details remain reserved
+  for deploy/remove/mod planning paths to match Go.
+- `list` requires a clean check result and prints users, VMs, resources, or
+  a single-user access filter with inactive suffixes and Go-style colorization.
+- `show` requires a clean check result and prints WireGuard peers mapped to
+  users with endpoint port stripping, byte/handshake formatting, inactive
+  suffixes, sorting by user name, and Go-style colorization.
+- Added `tests/phase6.rs` covering read-only CLI parsing, root checks,
+  unsupported dry-run behavior, check/list/show output, color suppression, and
+  unclean-state refusals. Updated smoke tests for the Go-style unknown command
+  message.
+- Mutation commands (`init-ipsets`, `deploy`, `create`/`add`, `remove`, `mod`)
+  remain intentionally unsupported for later phases.
+- Local acceptance checks passed:
   - `cargo test`
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `make check`
-- Next step after the follow-up fix commit: start Phase 6 with a
-  medium-reasoning worker agent.
+- High-reasoning review agent `Newton` found two Phase 6 parity issues:
+  - `check` printed planned ipset deltas, unlike Go `cmdCheck`.
+  - explicit boolean flag assignment forms such as `--dry-run=false` and
+    single-dash long flags such as `-config-dir` were rejected.
+- Review findings were resolved:
+  - `check` no longer prints planned ipset deltas.
+  - CLI flag parsing accepts Go-style boolean assignments and single-dash long
+    global flags.
+  - regression tests cover both fixes.
+- Acceptance checks passed after review fixes:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- Next step after commit: start Phase 7 with a medium-reasoning worker agent.
