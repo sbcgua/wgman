@@ -349,3 +349,9 @@ Tests should prefer table-driven cases with small fixture strings for external c
 ## Postimplementation Improvement #2 - Port-Limited VM Access
 
 See [PORT_LIMITED_ACCESS_IMPROVEMENT.md](./archive/PORT_LIMITED_ACCESS_IMPROVEMENT.md). Also integrated in the text above.
+
+## Postimplementation Improvement session #3
+
+- `list` command: format user names similar to `show`, which is: add `~` for inactive ones and color them grey. Respect --no-color flag.
+- `cmd_check`: color status of final messages OK and FAILED in green and red respectively. Respect --no-color flag.
+- `list` command: color `tcp:` and `udp:` prefixes in pink and cyan respectively and Group tcp and udp ports together. Respect --no-color flag.
