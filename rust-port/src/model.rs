@@ -3,6 +3,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::parse_wg::WGDumpResult;
+
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -84,5 +86,62 @@ impl fmt::Display for ResourceProtocol {
 impl fmt::Display for ResourcePort {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.protocol, self.port)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ExpectedIPSets {
+    pub all: HashMap<String, String>,
+    pub ip_matrix: HashMap<String, String>,
+    pub port_matrix: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IPSetDelta {
+    pub set: String,
+    pub entry: String,
+    pub comment: String,
+    pub add: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WGPeerDeltaAction {
+    Add,
+    Remove,
+}
+
+impl fmt::Display for WGPeerDeltaAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Add => f.write_str("add"),
+            Self::Remove => f.write_str("remove"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WGPeerDelta {
+    pub user: String,
+    pub pub_key: String,
+    pub allowed_ip: String,
+    pub action: WGPeerDeltaAction,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct CheckResult {
+    pub hard_errors: Vec<String>,
+    pub drift: Vec<String>,
+    pub ipset_deltas: Vec<IPSetDelta>,
+    pub peer_deltas: Vec<WGPeerDelta>,
+    pub wg_dump: Option<WGDumpResult>,
+}
+
+impl CheckResult {
+    pub fn ok(&self) -> bool {
+        self.hard_errors.is_empty() && self.drift.is_empty() && self.peer_deltas.is_empty()
+    }
+
+    pub fn clean(&self) -> bool {
+        self.hard_errors.is_empty()
     }
 }

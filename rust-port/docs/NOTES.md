@@ -74,6 +74,37 @@ version.
   renders timestamp `0` as `never`, and colorizes the same day/minute
   components as the Go implementation.
 
+## Check And Drift
+
+- `check::check` is the read-only reconciliation engine. It validates config
+  and DB state first, then reads the interface subnet, WireGuard dump, and
+  configured ipsets through `SystemAdapter`.
+- `SystemAdapter` currently includes read-only live-state methods:
+  `interface_subnet`, `wg_dump`, and `ipset_list`. Mutation methods remain for
+  later phases.
+- `CheckResult` separates `hard_errors`, `drift`, `ipset_deltas`,
+  `peer_deltas`, and the parsed `wg_dump`. `ok()` requires no hard errors,
+  no ipset drift, and no peer drift. `clean()` only requires no hard errors.
+- `compute_expected_ipsets` derives all managed ipset entries from `db.yaml`.
+  Active `*` access maps to the all-access set, VM access maps to
+  `ip_matrix`, resource ports map to `port_matrix`, and inactive users are
+  excluded from all expected live WireGuard/ipset state.
+- Expected ipset comments match Go:
+  `<user> -> <vm>` for full VM access and
+  `<user> -> <resource> <protocol>/<port>` for port-limited resources.
+- Active DB users missing from live WireGuard produce `WGPeerDeltaAction::Add`.
+  Inactive DB users present in live WireGuard produce
+  `WGPeerDeltaAction::Remove`. Unknown live peers and allowed-IP mismatches
+  are hard errors.
+- If hard errors exist after WireGuard validation, ipset checks are skipped so
+  unsafe or ambiguous peer state does not produce deployable ipset drift.
+- Missing configured ipsets are hard errors and include the
+  `wgman init-ipsets` hint. Wrong set names, wrong set types, parse failures,
+  and malformed managed entries are hard errors, not delete drift.
+- Valid missing or extra managed entries are reported as drift with concrete
+  add/delete `IPSetDelta` values. Hard errors, drift, ipset deltas, and peer
+  deltas are sorted before return for stable output and tests.
+
 ## Config And DB
 
 - `config.yaml` and `db.yaml` loading rejects unknown fields with serde
@@ -113,6 +144,10 @@ version.
   validation policy, drift separation, rollback behavior, and command output.
 - Smoke tests cover only initial CLI scaffolding: no args, `help`, help flags,
   and unsupported-command usage errors.
+- Phase 4 integration tests cover clean check state, resource access, inactive
+  users, recoverable WireGuard peer drift, hard WireGuard errors, interface
+  subnet validation, ipset drift/deltas, missing sets, malformed managed
+  entries, and expected ipset computation.
 
 ## Linux Target
 

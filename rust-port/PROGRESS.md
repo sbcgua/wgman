@@ -25,7 +25,8 @@ the current state without relying on chat history.
   layout, `wgman-rs` binary target, initial `App`/`SystemAdapter` shape, fake
   test support, and smoke tests are in place.
 - Phase 2 implementation completed and review findings are resolved.
-- Phase 3 implementation completed, reviewed, verified, and ready to commit.
+- Phase 3 implementation completed, reviewed, and verified.
+- Phase 4 implementation completed, reviewed, verified, and ready to commit.
 
 ## Decisions Captured
 
@@ -148,4 +149,41 @@ the current state without relying on chat history.
 - High-reasoning review agent `Godel` found no Phase 3 issues. Residual risk:
   Go reference tests could not be run because `go` is not installed in this
   environment.
-- Next step after commit: start Phase 4 with a medium-reasoning worker agent.
+- Phase 3 committed as `699312c`.
+
+### Phase 4: Check Engine
+
+- Implemented `CheckResult`, `ExpectedIPSets`, `IPSetDelta`, `WGPeerDelta`, and
+  `WGPeerDeltaAction` in `src/model.rs`.
+- Extended `SystemAdapter` with read-only live-state methods for interface
+  subnet discovery, WireGuard dump reads, and ipset list reads.
+- Implemented real read-only command execution in `src/system_real.rs` using
+  argument arrays for `ip`, `wg`, and `ipset`.
+- Implemented `check::check` and `compute_expected_ipsets` in `src/check.rs`.
+  The engine validates DB/config first, checks interface subnet membership,
+  parses live WireGuard state, produces safe peer add/remove deltas, rejects
+  unknown peers and peer IP mismatches as hard errors, skips ipsets after WG
+  hard errors, validates managed ipset name/type/entry shape, separates hard
+  errors from drift, and emits concrete ipset add/delete deltas.
+- Added `tests/phase4.rs` with Go-parity coverage for clean state, resource
+  access, inactive users, peer drift, hard WG errors, subnet errors, missing
+  sets, malformed ipsets, drift/deltas, stable expected comments, and expected
+  ipset computation.
+- Updated `docs/NOTES.md` with Phase 4 check-engine conventions.
+- Local acceptance checks passed:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- High-reasoning review agent `Dirac` found one low-severity stability issue:
+  early WG dump/parse error returns did not sort previously collected hard
+  errors, and identified a missing inactive-user ipset cleanup test.
+- Review findings were resolved:
+  - `check.rs` now sorts before WG dump/parse early returns.
+  - `tests/phase4.rs` now directly covers inactive-user ipset delete drift.
+- Acceptance checks passed after review fixes:
+  - `cargo test`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `make check`
+- Next step after commit: start Phase 5 with a medium-reasoning worker agent.

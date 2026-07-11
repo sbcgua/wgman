@@ -30,4 +30,55 @@ impl SystemAdapter for RealSystemAdapter {
     fn stderr_is_terminal(&self) -> bool {
         std::io::stderr().is_terminal()
     }
+
+    fn interface_subnet(&self, iface: &str) -> Result<String, String> {
+        let output = std::process::Command::new("ip")
+            .args(["-o", "-4", "addr", "show", "dev", iface])
+            .output()
+            .map_err(|err| format!("run ip addr show: {err}"))?;
+        if !output.status.success() {
+            return Err(command_stderr("ip addr show", &output));
+        }
+
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|err| format!("ip addr show output is not UTF-8: {err}"))?;
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            for window in parts.windows(2) {
+                if window[0] == "inet" {
+                    return Ok(window[1].to_string());
+                }
+            }
+        }
+        Err(format!("no IPv4 address found on interface {iface:?}"))
+    }
+
+    fn wg_dump(&self, iface: &str) -> Result<String, String> {
+        command_stdout("wg", &["show", iface, "dump"])
+    }
+
+    fn ipset_list(&self, set_name: &str) -> Result<String, String> {
+        command_stdout("ipset", &["list", set_name, "-o", "save"])
+    }
+}
+
+fn command_stdout(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("run {program}: {err}"))?;
+    if !output.status.success() {
+        return Err(command_stderr(program, &output));
+    }
+    String::from_utf8(output.stdout).map_err(|err| format!("{program} output is not UTF-8: {err}"))
+}
+
+fn command_stderr(program: &str, output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        format!("{program} exited with {}", output.status)
+    } else {
+        stderr.to_string()
+    }
 }
