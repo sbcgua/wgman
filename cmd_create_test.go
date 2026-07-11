@@ -120,8 +120,8 @@ func TestPlanCreateUser_SuppliedIPAndAccess(t *testing.T) {
 	if strings.Join(plan.UpdatedDB.Access["carol"], ",") != "mailvm" {
 		t.Errorf("carol access = %v, want mailvm", plan.UpdatedDB.Access["carol"])
 	}
-	if len(plan.Deltas) != 1 || !plan.Deltas[0].Add || plan.Deltas[0].Entry != "10.8.0.20,192.168.122.101" {
-		t.Errorf("deltas = %+v, want one mailvm add", plan.Deltas)
+	if len(plan.IPSetDeltas) != 1 || !plan.IPSetDeltas[0].Add || plan.IPSetDeltas[0].Entry != "10.8.0.20,192.168.122.101" {
+		t.Errorf("ipset deltas = %+v, want one mailvm add", plan.IPSetDeltas)
 	}
 }
 

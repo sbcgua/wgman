@@ -7,13 +7,13 @@ import (
 )
 
 type removePlan struct {
-	UpdatedDB  *DB
-	Deltas     []IpsetDeltaOp
-	PeerDeltas []WGPeerDeltaOp
-	User       string
-	IP         string
-	Pub        string
-	Access     []string
+	UpdatedDB   *DB
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	User        string
+	IP          string
+	Pub         string
+	Access      []string
 }
 
 func cmdRemove(gf *globalFlags, args []string, app *App) int {
@@ -73,7 +73,7 @@ func cmdRemove(gf *globalFlags, args []string, app *App) int {
 }
 
 func applyRemoveUserPlan(configDir, iface string, plan *removePlan, sys SystemAdapter) (applyErr, rollbackErr error) {
-	applied, err := ApplyStateDeltasTracked(iface, plan.Deltas, plan.PeerDeltas, sys)
+	applied, err := ApplyStateDeltasTracked(iface, plan.IPSetDeltas, plan.PeerDeltas, sys)
 	if err != nil {
 		return err, RollbackStateDeltas(iface, applied, sys)
 	}
@@ -107,12 +107,12 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	access := append([]string(nil), db.Access[user]...)
 	sort.Strings(access)
 	return &removePlan{
-		UpdatedDB:  updated,
-		Deltas:     deltas,
-		PeerDeltas: []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}},
-		User:       user,
-		IP:         entry.IP,
-		Pub:        entry.Pub,
-		Access:     access,
+		UpdatedDB:   updated,
+		IPSetDeltas: deltas,
+		PeerDeltas:  []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove}},
+		User:        user,
+		IP:          entry.IP,
+		Pub:         entry.Pub,
+		Access:      access,
 	}, nil
 }

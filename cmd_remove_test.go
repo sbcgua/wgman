@@ -24,10 +24,10 @@ func TestPlanRemoveUser(t *testing.T) {
 	if strings.Join(plan.Access, ",") != "mailvm,sandbox" {
 		t.Errorf("plan access = %v, want sorted mailvm,sandbox", plan.Access)
 	}
-	if len(plan.Deltas) != 2 {
-		t.Fatalf("len(deltas) = %d, want 2: %+v", len(plan.Deltas), plan.Deltas)
+	if len(plan.IPSetDeltas) != 2 {
+		t.Fatalf("len(ipset deltas) = %d, want 2: %+v", len(plan.IPSetDeltas), plan.IPSetDeltas)
 	}
-	for _, delta := range plan.Deltas {
+	for _, delta := range plan.IPSetDeltas {
 		if delta.Add {
 			t.Errorf("remove delta should delete, got add: %+v", delta)
 		}

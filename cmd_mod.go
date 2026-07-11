@@ -12,10 +12,10 @@ type modAccessOp struct {
 }
 
 type modTogglePlan struct {
-	UpdatedDB  *DB
-	Deltas     []IpsetDeltaOp
-	PeerDeltas []WGPeerDeltaOp
-	NoOp       bool
+	UpdatedDB   *DB
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	NoOp        bool
 }
 
 // parseModExpression parses comma-separated access edits such as
@@ -142,11 +142,11 @@ func cmdModToggle(gf *globalFlags, cfg *Config, db *DB, user, action string, app
 		return 0
 	}
 
-	changeCount := len(plan.Deltas)
+	changeCount := len(plan.IPSetDeltas)
 	changeCount += len(plan.PeerDeltas)
 
 	fmt.Fprintf(app.Stdout, "mod: planned changes (%d):\n", changeCount)
-	printDeltas(plan.Deltas, app.Stdout)
+	printDeltas(plan.IPSetDeltas, app.Stdout)
 	printPeerDeltas(plan.PeerDeltas, app.Stdout)
 
 	if gf.dryRun {
@@ -212,8 +212,8 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 	oldAll, oldMatrix := computeExpectedIPSets(db)
 	newAll, newMatrix := computeExpectedIPSets(updated)
 	plan := &modTogglePlan{
-		UpdatedDB: updated,
-		Deltas:    diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
+		UpdatedDB:   updated,
+		IPSetDeltas: diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix),
 	}
 	if action == "activate" {
 		plan.PeerDeltas = []WGPeerDeltaOp{{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerAdd}}
@@ -224,7 +224,7 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 }
 
 func applyModToggleLive(iface string, plan *modTogglePlan, sys SystemAdapter) (AppliedStateDeltas, error) {
-	return ApplyStateDeltasTracked(iface, plan.Deltas, plan.PeerDeltas, sys)
+	return ApplyStateDeltasTracked(iface, plan.IPSetDeltas, plan.PeerDeltas, sys)
 }
 
 func rollbackModToggleLive(iface string, applied AppliedStateDeltas, sys SystemAdapter) error {

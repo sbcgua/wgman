@@ -17,12 +17,12 @@ type createArgs struct {
 }
 
 type createPlan struct {
-	UpdatedDB  *DB
-	Deltas     []IpsetDeltaOp
-	PeerDeltas []WGPeerDeltaOp
-	ClientIP   string
-	PrivateKey string
-	PubKey     string
+	UpdatedDB   *DB
+	IPSetDeltas []IpsetDeltaOp
+	PeerDeltas  []WGPeerDeltaOp
+	ClientIP    string
+	PrivateKey  string
+	PubKey      string
 }
 
 func parseCreateArgs(args []string, comment string, commentSet bool) (*createArgs, error) {
@@ -201,9 +201,9 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 	}
 
 	fmt.Fprintf(app.Stdout, "create: planned user %s at %s\n", parsed.Name, plan.ClientIP)
-	if len(plan.Deltas) > 0 {
-		fmt.Fprintf(app.Stdout, "create: planned access changes (%d):\n", len(plan.Deltas))
-		printDeltas(plan.Deltas, app.Stdout)
+	if len(plan.IPSetDeltas) > 0 {
+		fmt.Fprintf(app.Stdout, "create: planned access changes (%d):\n", len(plan.IPSetDeltas))
+		printDeltas(plan.IPSetDeltas, app.Stdout)
 	}
 
 	if err := writeClientConfig(clientConfigPath, clientConfig); err != nil {
@@ -220,7 +220,7 @@ func cmdCreate(gf *globalFlags, args []string, app *App) int {
 }
 
 func applyCreateUserPlan(configDir, iface, clientConfigPath string, plan *createPlan, sys SystemAdapter) (applyErr, rollbackErr error) {
-	applied, err := ApplyStateDeltasTracked(iface, plan.Deltas, plan.PeerDeltas, sys)
+	applied, err := ApplyStateDeltasTracked(iface, plan.IPSetDeltas, plan.PeerDeltas, sys)
 	if err != nil {
 		return err, rollbackCreateLiveState(iface, clientConfigPath, applied, sys)
 	}
@@ -320,12 +320,12 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, sys SystemAdapter) (*
 	newAll, newMatrix := computeExpectedIPSets(updated)
 	deltas := diffExpectedIPSets(cfg, oldAll, oldMatrix, newAll, newMatrix)
 	return &createPlan{
-		UpdatedDB:  updated,
-		Deltas:     deltas,
-		PeerDeltas: []WGPeerDeltaOp{{User: args.Name, PubKey: pubKey, AllowedIP: clientIP, Action: WGPeerAdd}},
-		ClientIP:   clientIP,
-		PrivateKey: privKey,
-		PubKey:     pubKey,
+		UpdatedDB:   updated,
+		IPSetDeltas: deltas,
+		PeerDeltas:  []WGPeerDeltaOp{{User: args.Name, PubKey: pubKey, AllowedIP: clientIP, Action: WGPeerAdd}},
+		ClientIP:    clientIP,
+		PrivateKey:  privKey,
+		PubKey:      pubKey,
 	}, nil
 }
 

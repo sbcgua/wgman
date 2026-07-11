@@ -77,8 +77,8 @@ func printRemovePlan(plan *removePlan, w io.Writer) {
 	} else {
 		fmt.Fprintf(w, "remove: access: %s\n", strings.Join(plan.Access, ", "))
 	}
-	if len(plan.Deltas) > 0 {
-		fmt.Fprintf(w, "remove: planned access changes (%d):\n", len(plan.Deltas))
-		printDeltas(plan.Deltas, w)
+	if len(plan.IPSetDeltas) > 0 {
+		fmt.Fprintf(w, "remove: planned access changes (%d):\n", len(plan.IPSetDeltas))
+		printDeltas(plan.IPSetDeltas, w)
 	}
 }
