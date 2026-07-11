@@ -242,12 +242,31 @@ version.
 - Use fake system adapters and temporary config directories.
 - Use the Go tests as the parity checklist, especially for parser edge cases,
   validation policy, drift separation, rollback behavior, and command output.
+- Phase 9 parity tests intentionally include command-level edge cases that were
+  easy to miss in broad Phase 8 flows: resource port access deltas for
+  create/mod, duplicate and case-conflicting create users, supplied IP/public
+  key conflicts, missing remove users, admin all-access removal,
+  inactive-user DB-only edits, redundant activate/deactivate no-ops, and
+  DB-save failure rollback through the real atomic writer on Unix.
 - Smoke tests cover only initial CLI scaffolding: no args, `help`, help flags,
   and unsupported-command usage errors.
 - Phase 4 integration tests cover clean check state, resource access, inactive
   users, recoverable WireGuard peer drift, hard WireGuard errors, interface
   subnet validation, ipset drift/deltas, missing sets, malformed managed
   entries, and expected ipset computation.
+- Save-failure rollback tests use temporary directories with read-only Unix
+  permissions after fixture setup. They remain part of the normal Linux suite
+  and do not require root; if future CI runs tests as root, these cases may need
+  an explicit save-failure seam instead because root can bypass directory write
+  bits.
+
+## Packaging
+
+- `rust-port/README.md` is the concise final artifact note for building,
+  checking, and operator-facing usage.
+- The shipped binary remains a normal Cargo-built Linux executable named
+  `wgman-rs`. Static linking, distro packages, and service integration are
+  intentionally left for a later packaging task.
 
 ## Linux Target
 

@@ -31,6 +31,7 @@ the current state without relying on chat history.
 - Phase 6 implementation completed, reviewed, and verified.
 - Phase 7 implementation completed, reviewed, and verified.
 - Phase 8 implementation completed, reviewed, and verified.
+- Phase 9 audit/packaging completed and locally verified.
 
 ## Decisions Captured
 
@@ -357,3 +358,36 @@ the current state without relying on chat history.
   useful for Phase 9 audit coverage.
 - Next step after commit: start Phase 9 final audit and packaging with a
   medium-reasoning worker agent.
+
+### Phase 9: Parity Audit And Packaging
+
+- Audited the Phase 8 Rust command coverage against the requested Go parity
+  tests and `docs/SPEC.md`, focusing on create/remove/mod edge cases and
+  rollback behavior.
+- Added focused Rust parity coverage in `tests/phase8.rs` for:
+  - resource-port access deltas in `create` and `mod`;
+  - duplicate and case-conflicting create users;
+  - supplied IP conflicts, generated public-key conflicts, and resource access
+    creation;
+  - missing remove users and admin all-access set deletion;
+  - inactive-user DB-only access edits;
+  - redundant `activate`/`deactivate` no-ops;
+  - DB-save failure rollback for `create` and `remove` using the real atomic
+    writer with read-only Unix temp directories.
+- Confirmed the added parity tests do not require root, WireGuard, ipset,
+  iptables, or live network interfaces.
+- Added `rust-port/README.md` with concise build/check/usage notes for the
+  final artifact.
+- Updated `rust-port/docs/NOTES.md` with Phase 9 test conventions, packaging
+  expectations, and the intentional limitation that live Linux `wg`/`ipset`
+  command paths remain fake-tested in the normal suite.
+- Verification run during Phase 9:
+  - `cargo test --test phase8`
+  - `cargo fmt`
+  - `cargo run --quiet -- help`
+  - `make check`
+- `make check` passed from `rust-port/`: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test` all succeeded.
+- `wgman-rs help` output was sanity-checked with `cargo run --quiet -- help`;
+  it includes the expected command list, create/add alias, dry-run/yes support,
+  and color/config flags.
