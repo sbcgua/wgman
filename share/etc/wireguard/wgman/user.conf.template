@@ -8,6 +8,7 @@
 # that should be routed through this WireGuard tunnel.
 # Adjust Endpoint to the public host/IP and UDP port of this WireGuard server.
 # PersistentKeepalive is useful for clients behind NAT; tune or remove if needed.
+# NB: comments are stripped when a real user file is created
 
 [Interface]
 PrivateKey = $CLIENT_PRIVATE_KEY

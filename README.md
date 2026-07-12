@@ -50,6 +50,203 @@
       - mailvm
 ```
 
+## Basic Features
+
+Show **help**:
+
+```sh
+sudo wgman help
+```
+
+**Check** config, WireGuard peers, and ipset state consistency:
+
+```sh
+sudo wgman check
+```
+
+**List** users, user groups, resources, and optional user or user group access:
+
+```sh
+sudo wgman list
+sudo wgman list alice
+sudo wgman list developers
+# Suppress interactive color output:
+sudo wgman list --no-color
+```
+
+```text
+Users:
+  admin                10.8.0.5       (*)
+  alice                10.8.0.10      (ssh@sandbox,sandbox)
+  bob~                 10.8.0.11      (sandbox,mailvm)
+
+User Groups:
+  developers:          alice
+  admins:              admin
+
+VMs:
+  sandbox:             192.168.122.100
+  mailvm:              192.168.122.101
+
+Resources:
+  ssh@sandbox          sandbox        tcp:22
+```
+
+**Show** WireGuard peer status with user names (as a friendlier version of `wg show`):
+
+```sh
+sudo wgman show
+# Suppress interactive color output:
+sudo wgman show --no-color
+```
+
+```text
+NAME       IP          ENDPOINT        RX        TX        LAST HANDSHAKE
+admin      10.8.0.5    180.90.91.48    117.69Mb  320.32Mb  1m35s
+alice      10.8.0.10   145.80.12.11    1.35Mb    6.88Mb    6h5m24s
+bob~       10.8.0.15   -               -         -         -
+```
+
+**Create the managed ipsets** defined in `config.yaml`:
+
+```sh
+sudo wgman init-ipsets
+```
+
+Flush managed ipset contents, useful in WireGuard `PreDown` hooks:
+
+```sh
+sudo wgman init-ipsets --flush
+```
+
+Destroy managed ipsets manually after firewall rules are removed:
+
+```sh
+sudo wgman-firewall-hook down
+sudo wgman init-ipsets --destroy
+```
+
+`--flush --destroy` flushes first, then destroys. Missing sets during flush or
+destroy are treated as already-clean state.
+
+The config must define all three managed sets:
+
+```yaml
+interface: wg0
+sets:
+  all: wg_allow_all
+  ip_matrix: wg_allow_matrix
+  port_matrix: wg_allow_matrix_ports
+```
+
+**Access rules deployment**. Preview access reconciliation:
+
+```sh
+sudo wgman deploy --dry-run
+```
+
+Apply reconciliation from `db.yaml` to WireGuard peers and managed ipsets:
+
+```sh
+sudo wgman deploy
+```
+
+Skip confirmation prompts where supported:
+
+```sh
+sudo wgman deploy --yes
+```
+
+`--dry-run` is supported by `deploy`, `remove`, `mod`, and `usergroup`. It is
+rejected for commands such as `create` and `init-ipsets` so planned-change
+output is not confused with real changes.
+
+**Create a user** with an auto-assigned IP:
+
+```sh
+sudo wgman create alice
+# Equivalent alias:
+sudo wgman add alice
+```
+
+Create a user with a stored operator comment:
+
+```sh
+sudo wgman create -c "laptop replacement scheduled" alice
+```
+
+Create a user with an explicit IP and full-VM access:
+
+```sh
+sudo wgman create alice 10.1.0.10 sandbox,mailvm
+```
+
+Creating a user also saves the VPN config file for them to the current dir, based on the `user.conf.template` from the config directory (by default `/etc/wireguard/wgman`). [See example](./share/etc/wireguard/wgman/user.conf.template).
+
+**Create or modify access** to a port-limited resource:
+
+```yaml
+resources:
+  ssh@sandbox:
+    vm: sandbox
+    ports: 22
+  web@sandbox:
+    vm: sandbox
+    ports: [80, 443, tcp:8080]
+  dns@mailvm:
+    vm: mailvm
+    ports: udp:53
+```
+
+```sh
+sudo wgman create alice ssh@sandbox
+sudo wgman mod alice +web@sandbox,-ssh@sandbox
+```
+
+**Modify** resource access:
+
+```sh
+sudo wgman mod alice +mailvm,-sandbox
+sudo wgman mod developers +mailvm
+```
+
+**Manage user group** membership:
+
+```sh
+sudo wgman usergroup developers
+sudo wgman usergroup developers +alice,-bob
+sudo wgman usergroup --dry-run developers +alice
+```
+
+If user group does not exist it is created.
+
+User group access and direct user access merge for each user. In `wgman list
+alice`, access inherited only from user groups is annotated with the group name,
+for example `mailvm (developers)`.
+
+Deactivate or reactivate a user without deleting their DB record:
+
+```sh
+sudo wgman mod alice deactivate
+sudo wgman mod alice activate
+```
+
+**Remove** a user:
+
+```sh
+sudo wgman remove alice
+# Equivalent alias:
+sudo wgman del alice
+```
+
+Removing a user also removes that user from all user groups.
+
+Use an **alternate config** directory for testing or staging:
+
+```sh
+sudo wgman --config-dir ./fixtures check
+```
+
 ## Development Prerequisites
 
 - Go installed in the development environment.
@@ -167,185 +364,6 @@ To inspect the effective hook variables after reading `config.yaml`:
 ```
 
 The template is IPv4-only and uses `iptables`/`ipset`. Hosts using nftables or IPv6 should adapt the template manually.
-
-## Basic Commands
-
-Implemented commands:
-
-Show help:
-
-```sh
-sudo wgman help
-```
-
-Check config, WireGuard peers, and ipset state consistency:
-
-```sh
-sudo wgman check
-```
-
-List users, user groups, resources, and optional user or user group access:
-
-```sh
-sudo wgman list
-sudo wgman list alice
-sudo wgman list developers
-# Suppress interactive color output:
-sudo wgman list --no-color
-```
-
-Show WireGuard peer status with user names:
-
-```sh
-sudo wgman show
-# Suppress interactive color output:
-sudo wgman show --no-color
-```
-
-```text
-NAME       IP          ENDPOINT        RX        TX        LAST HANDSHAKE
-admin      10.8.0.5    180.90.91.48    117.69Mb  320.32Mb  1m35s
-alice      10.8.0.10   145.80.12.11    1.35Mb    6.88Mb    6h5m24s
-bob~       10.8.0.15   -               -         -         -
-```
-
-Create the managed ipsets defined in `config.yaml`:
-
-```sh
-sudo wgman init-ipsets
-```
-
-Flush managed ipset contents, useful in WireGuard `PreDown` hooks:
-
-```sh
-sudo wgman init-ipsets --flush
-```
-
-Destroy managed ipsets manually after firewall rules are removed:
-
-```sh
-sudo wgman-firewall-hook down
-sudo wgman init-ipsets --destroy
-```
-
-`--flush --destroy` flushes first, then destroys. Missing sets during flush or
-destroy are treated as already-clean state.
-
-The config must define all three managed sets:
-
-```yaml
-interface: wg0
-sets:
-  all: wg_allow_all
-  ip_matrix: wg_allow_matrix
-  port_matrix: wg_allow_matrix_ports
-```
-
-Preview access reconciliation:
-
-```sh
-sudo wgman deploy --dry-run
-```
-
-Apply reconciliation from `db.yaml` to WireGuard peers and managed ipsets:
-
-```sh
-sudo wgman deploy
-```
-
-Skip confirmation prompts where supported:
-
-```sh
-sudo wgman deploy --yes
-```
-
-`--dry-run` is supported by `deploy`, `remove`, `mod`, and `usergroup`. It is
-rejected for commands such as `create` and `init-ipsets` so planned-change
-output is not confused with real changes.
-
-Create a user with an auto-assigned IP:
-
-```sh
-sudo wgman create alice
-# Equivalent alias:
-sudo wgman add alice
-```
-
-Create a user with a stored operator comment:
-
-```sh
-sudo wgman create -c "laptop replacement scheduled" alice
-```
-
-Create a user with an explicit IP and full-VM access:
-
-```sh
-sudo wgman create alice 10.1.0.10 sandbox,mailvm
-```
-
-Create or modify access to a port-limited resource:
-
-```yaml
-resources:
-  ssh@sandbox:
-    vm: sandbox
-    ports: 22
-  web@sandbox:
-    vm: sandbox
-    ports: [80, 443, tcp:8080]
-  dns@mailvm:
-    vm: mailvm
-    ports: udp:53
-```
-
-```sh
-sudo wgman create alice ssh@sandbox
-sudo wgman mod alice +web@sandbox,-ssh@sandbox
-```
-
-Modify resource access:
-
-```sh
-sudo wgman mod alice +mailvm,-sandbox
-sudo wgman mod developers +mailvm
-```
-
-Manage user group membership:
-
-```sh
-sudo wgman usergroup developers
-sudo wgman usergroup developers +alice,-bob
-sudo wgman usergroup --dry-run developers +alice
-```
-
-If user group does not exist it is created.
-
-User group access and direct user access merge for each user. In `wgman list
-alice`, access inherited only from user groups is annotated with the group name,
-for example `mailvm (developers)`.
-
-Deactivate or reactivate a user without deleting their DB record:
-
-```sh
-sudo wgman mod alice deactivate
-sudo wgman mod alice activate
-```
-
-Remove a user:
-
-```sh
-sudo wgman remove alice
-# Equivalent alias:
-sudo wgman del alice
-```
-
-Removing a user also removes that user from all user groups.
-
-Use an alternate config directory for testing or staging:
-
-```sh
-sudo wgman --config-dir ./fixtures check
-```
 
 ## Real Host Smoke Test
 
