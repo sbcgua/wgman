@@ -215,6 +215,8 @@ Internally, the "deploy" part must be coded as a routine, that applies changes t
 
 Reuse the `deploy` routine to update the state.
 
+`remove` has command line alias - `del`.
+
 ## Modify access to resources
 
 `wgman mod <name> <+res1,-res2...|activate|deactivate>`

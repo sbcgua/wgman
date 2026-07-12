@@ -134,6 +134,7 @@ future changes. They intentionally omit implementation history.
   tests and non-TTY output default to plain text.
 - `create`, `mod`, and `usergroup` do not prompt after validation.
 - `add` is a CLI alias for `create`.
+- `del` is a CLI alias for `remove`.
 - `create`/`add` support `-c <comment>` for storing user metadata. The value
   is trimmed, empty comments are rejected with exit code 2, and later comment
   edits are manual `db.yaml` edits.

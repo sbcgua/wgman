@@ -319,6 +319,8 @@ Remove a user:
 
 ```sh
 sudo wgman remove alice
+# Equivalent alias:
+sudo wgman del alice
 ```
 
 Removing a user also removes that user from all user groups.

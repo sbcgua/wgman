@@ -22,6 +22,7 @@ Commands:
   create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
   add          Alias for create
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
+  del          Alias for remove
   mod          Modify access or active state: mod <name> <+res1,-res2...|activate|deactivate> (supports --dry-run)
   usergroup    List or edit user group membership: usergroup <group> [+user,-user...] (supports --dry-run)
   help         Show this help message
@@ -194,7 +195,7 @@ func runApp(args []string, app *App) int {
 		return cmdMod(parsed.gf, parsed.args, app)
 	case "create", "add":
 		return cmdCreate(parsed.gf, parsed.args, app)
-	case "remove":
+	case "remove", "del":
 		return cmdRemove(parsed.gf, parsed.args, app)
 	case "usergroup":
 		return cmdUserGroup(parsed.gf, parsed.args, app)
