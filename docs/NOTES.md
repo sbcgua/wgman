@@ -21,14 +21,18 @@ future changes. They intentionally omit implementation history.
 - User records support optional `comment` metadata and optional
   `inactive: true`. Missing `inactive` means active. Deterministic writes omit
   empty comments and omit `inactive` when false.
+- User groups are flat lists of users. They are not nested, and validation
+  rejects unknown members before live state is inspected.
 - Duplicate user IPs, duplicate public keys, duplicate access entries, and
   access references to unknown users or access targets are rejected.
+- Users and user groups share the access-principal namespace for `access`
+  owners. VMs and resources share a separate access-target namespace.
 - VMs and resources share one access-target namespace. Exact and case-only
   conflicts between VM and resource names are rejected.
 - Resource ports are normalized to explicit `tcp:<port>` or `udp:<port>` pairs;
   unprefixed ports mean TCP. Duplicate ports are detected after normalization.
 - Access entry `"*"` means all-access/admin and must be the only entry for
-  that user.
+  that principal.
 - Private keys are never written to `db.yaml`.
 
 ## System Boundaries
@@ -62,13 +66,16 @@ future changes. They intentionally omit implementation history.
   DB state, so remove deltas must keep the last intended allowed IP.
 - `deploy` may reconcile ipset drift and known-user peer drift when there are
   no hard errors.
-- `create`, `remove`, `mod`, `list`, and `show` require a fully clean
+- `create`, `remove`, `mod`, `usergroup`, `list`, and `show` require a fully clean
   `CheckResult`.
 - Configured ipsets are fully owned by `wgman`; unexpected entries in those
   sets are safe for `deploy` to delete.
 - Inactive users are excluded from expected WireGuard peers and managed
   ipsets. Inactive users present in live WireGuard are removable drift, while
   active users missing from WireGuard are addable drift.
+- Expected ipset state is computed from effective per-user access: direct user
+  access plus access from all user groups containing that user. If effective
+  access includes `"*"`, lower-level VM/resource entries are suppressed.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
 - `CheckResult.HardErrors`, `Drift`, `IPSetDeltas`, and `PeerDeltas` are
@@ -97,9 +104,10 @@ future changes. They intentionally omit implementation history.
 
 - `SaveDBAtomic` writes a same-directory temporary file, chmods it `0600`,
   syncs it, renames it over `db.yaml`, then syncs the config directory.
-- Deterministic DB output sorts users, VMs, resources, and access owners.
+- Deterministic DB output sorts users, user groups, VMs, resources, and access
+  owners. It emits `user-groups: {}` even when no user groups exist.
 - Access lists are normalized to sorted, duplicate-free lists before writing;
-  users with empty access are omitted from `access`.
+  principals with empty access are omitted from `access`.
 - Generated client configs are written as `<user>.vpn.conf` in the current
   working directory, mode `0600`, and are never overwritten.
 - Generated client configs strip comment-only lines from `user.conf.template`
@@ -109,27 +117,28 @@ future changes. They intentionally omit implementation history.
 - `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
   `db.yaml`. Failures trigger best-effort rollback.
 - `remove` does not delete existing generated client config files.
-- Access-only `mod` writes `db.yaml` before applying ipset deltas; it refuses
-  to run unless the pre-command state is clean. Inactive-user access edits can
-  be DB-only changes because inactive users have no expected live ipset state.
+- Access-only `mod` and membership-changing `usergroup` write `db.yaml` before
+  applying ipset deltas; they refuse to run unless the pre-command state is
+  clean. Inactive-user access edits can be DB-only changes because inactive
+  users have no expected live ipset state.
 
 ## Command Behavior
 
 - `help`, no args, `-h`, and `--help` print usage and exit 0.
 - Exit code 2 is used for usage and argument errors.
 - Exit code 1 is used for validation, system, or write failures.
-- `--dry-run` is supported only by `deploy`, `remove`, and `mod`.
+- `--dry-run` is supported only by `deploy`, `remove`, `mod`, and `usergroup`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
 - `--no-color` is a global output flag. Color decisions go through `App`'s
   stdout TTY boundary, which delegates terminal detection to `SystemAdapter`;
   tests and non-TTY output default to plain text.
-- `create` and `mod` do not prompt after validation.
+- `create`, `mod`, and `usergroup` do not prompt after validation.
 - `add` is a CLI alias for `create`.
 - `create`/`add` support `-c <comment>` for storing user metadata. The value
   is trimmed, empty comments are rejected with exit code 2, and later comment
   edits are manual `db.yaml` edits.
-- `deploy`, `remove`, and `mod` print planned deltas before applying or
-  reporting dry-run results.
+- `deploy`, `remove`, `mod`, and `usergroup` print planned deltas before
+  applying or reporting dry-run results.
 - Command-level planning helpers return plan structs rather than parallel
   result values. Plans use `IPSetDeltas` and `PeerDeltas` field names for live
   system changes.
@@ -144,8 +153,11 @@ future changes. They intentionally omit implementation history.
   user is already in the requested state.
 - Inactive toggles apply live changes before committing `db.yaml`; failed live
   changes or failed DB commits trigger best-effort live rollback.
-- `list [user]` with no filter prints users with IP/access summaries, VMs, and
-  resources. With a user filter it prints that user's access list.
+- `list [filter]` with no filter prints users with effective IP/access
+  summaries, user groups, VMs, and resources. With a user filter it prints that
+  user's effective access list; group-only inherited entries are annotated with
+  source user group names. With a user group filter it prints direct user group
+  access only.
 - `list` colorizes access markers on interactive stdout: `none` uses grey and
   `*` uses red. `--no-color` suppresses this.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.

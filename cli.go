@@ -23,12 +23,13 @@ Commands:
   add          Alias for create
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
   mod          Modify access or active state: mod <name> <+res1,-res2...|activate|deactivate> (supports --dry-run)
+  usergroup    List or edit user group membership: usergroup <group> [+user,-user...] (supports --dry-run)
   help         Show this help message
 
 Global flags:
   --config-dir <dir>  Config directory (default /etc/wireguard/wgman)
   --yes               Skip interactive confirmation prompts
-  --dry-run           Show planned changes without applying them (deploy, remove, mod only)
+  --dry-run           Show planned changes without applying them (deploy, remove, mod, usergroup only)
   --no-color          Disable colorized terminal output
 
 Run 'wgman help' or 'wgman -h' for this message.
@@ -195,6 +196,8 @@ func runApp(args []string, app *App) int {
 		return cmdCreate(parsed.gf, parsed.args, app)
 	case "remove":
 		return cmdRemove(parsed.gf, parsed.args, app)
+	case "usergroup":
+		return cmdUserGroup(parsed.gf, parsed.args, app)
 	default:
 		fmt.Fprintf(app.Stderr, "wgman: unknown command %q\nRun 'wgman help' for usage.\n", parsed.name)
 		return 2

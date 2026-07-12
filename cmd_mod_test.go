@@ -77,8 +77,8 @@ func TestPlanModAccess_AddAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planModAccess: %v", err)
 	}
-	if plan.User != "alice" {
-		t.Errorf("plan user = %q, want alice", plan.User)
+	if plan.Principal != "alice" {
+		t.Errorf("plan principal = %q, want alice", plan.Principal)
 	}
 	if !plan.AccessChanged {
 		t.Error("plan AccessChanged = false, want true")
@@ -125,6 +125,38 @@ func TestPlanModAccess_AddResourceCreatesPortDelta(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("missing resource port delta: %+v", plan.IPSetDeltas)
+	}
+}
+
+func TestPlanModAccess_UserGroup(t *testing.T) {
+	cfg := makeTestCfg()
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{"devs": {"alice"}}
+
+	plan, err := planModAccess(cfg, db, "devs", []modAccessOp{{Add: true, Resource: "mailvm"}})
+	if err != nil {
+		t.Fatalf("planModAccess group: %v", err)
+	}
+	if got := strings.Join(plan.UpdatedDB.Access["devs"], ","); got != "mailvm" {
+		t.Errorf("updated devs access = %q, want mailvm", got)
+	}
+	found := false
+	for _, delta := range plan.IPSetDeltas {
+		if delta.Add && delta.Entry == "10.8.0.10,192.168.122.101" && delta.Comment == "alice -> mailvm" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("missing inherited access delta: %+v", plan.IPSetDeltas)
+	}
+}
+
+func TestPlanModToggleRejectsUserGroup(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{"devs": {"alice"}}
+	_, err := planModToggle(makeTestCfg(), db, "devs", "deactivate")
+	if err == nil || !strings.Contains(err.Error(), "not supported for user group") {
+		t.Fatalf("planModToggle group error = %v, want unsupported user group", err)
 	}
 }
 

@@ -14,7 +14,7 @@ type modAccessOp struct {
 type modAccessPlan struct {
 	UpdatedDB     *DB
 	IPSetDeltas   []IpsetDeltaOp
-	User          string
+	Principal     string
 	AccessChanged bool
 }
 
@@ -112,7 +112,7 @@ func cmdMod(gf *globalFlags, args []string, app *App) int {
 	if len(plan.IPSetDeltas) > 0 {
 		printIPSetDeltas(plan.IPSetDeltas, app.Stdout)
 	} else {
-		fmt.Fprintf(app.Stdout, "  update db access for %s\n", plan.User)
+		fmt.Fprintf(app.Stdout, "  update db access for %s\n", plan.Principal)
 	}
 
 	if gf.dryRun {
@@ -190,6 +190,9 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 	}
 	entry, ok := db.Users[user]
 	if !ok {
+		if _, ok := db.UserGroups[user]; ok {
+			return nil, fmt.Errorf("activate/deactivate is not supported for user group %q", user)
+		}
 		return nil, fmt.Errorf("user %q not found", user)
 	}
 
@@ -231,10 +234,12 @@ func planModToggle(cfg *Config, db *DB, user, action string) (*modTogglePlan, er
 
 func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAccessPlan, error) {
 	if !nameRe.MatchString(user) {
-		return nil, fmt.Errorf("invalid user name %q", user)
+		return nil, fmt.Errorf("invalid user or user group name %q", user)
 	}
 	if _, ok := db.Users[user]; !ok {
-		return nil, fmt.Errorf("user %q not found", user)
+		if _, ok := db.UserGroups[user]; !ok {
+			return nil, fmt.Errorf("user or user group %q not found", user)
+		}
 	}
 
 	updatedDb := cloneDB(db)
@@ -269,7 +274,7 @@ func planModAccess(cfg *Config, db *DB, user string, ops []modAccessOp) (*modAcc
 	return &modAccessPlan{
 		UpdatedDB:     updatedDb,
 		IPSetDeltas:   diffExpectedIPSets(cfg, oldExpected, newExpected),
-		User:          user,
+		Principal:     user,
 		AccessChanged: !slices.Equal(db.Access[user], updatedDb.Access[user]),
 	}, nil
 }

@@ -22,12 +22,13 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
     port_matrix: wg_allow_matrix_ports # the ip,port,ip set, that maps client IP to VM service ports
 ```
 
-`db.yaml` - the database of users, VMs, port-limited resources, and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
+`db.yaml` - the database of users, user groups, VMs, port-limited resources, and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
 
 - `users` section list users, every one contains `ip` and `pub` (public key) params. The ip is mostly for the human readability of the file. Wgman must user pub keys for its validations. A user may also include optional `comment` metadata and optional `inactive: true`; missing `inactive` means the user is active.
+- `user-groups` section is optional and lists named, flat user groups. Missing means no groups. Empty groups are valid. Group members must be existing users.
 - `vms` section - list of VM names and the corresponding ip addresses
 - `resources` section - optional list of named services. Each resource references a VM and one or more TCP/UDP ports. Unprefixed ports mean TCP. A resource may include optional `comment` metadata.
-- The `access` matrix declares VMs or resources accessible to a user. VM entries are added to `sets.ip_matrix`; resource entries are added to `sets.port_matrix`. If the access entry = `*`, the user must be added to the `sets.all` (admin). A user may have access to multiple VMs/resources.
+- The `access` matrix declares VMs or resources accessible to a user or user group. VM entries are added to `sets.ip_matrix`; resource entries are added to `sets.port_matrix`. If the effective access entry = `*`, the user must be added to the `sets.all` (admin). Direct user access and all access from groups containing that user merge; `*` is dominant and suppresses redundant VM/resource entries.
 
 ```yaml
   users:
@@ -42,6 +43,12 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
       ip: 10.8.0.15
       pub: 1j67823bghdhskfj6734gyg5345645
       inactive: true
+
+  user-groups:
+    admins:
+      - admin
+    developers:
+      - alice
 
   vms:
     sandbox: 192.168.122.100
@@ -59,10 +66,12 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
         - tcp:53
 
   access:
-    admin:
+    admins:
       - "*"
-    alice:
+    developers:
       - ssh@sandbox
+    alice:
+      - sandbox
     bob:
       - sandbox
       - mailvm
@@ -93,7 +102,7 @@ The tool is invoked as `wgman <cmd> [params...]`. Commands description follows. 
 Global flags:
 
 - `--yes` - skip interactive confirmation prompts.
-- `--dry-run` - show planned changes without applying them. Supported by `deploy`, `remove`, and `mod`.
+- `--dry-run` - show planned changes without applying them. Supported by `deploy`, `remove`, `mod`, and `usergroup`.
 - `--no-color` - suppress colorized terminal output.
 
 ### Check
@@ -103,9 +112,10 @@ Global flags:
 - read wg - `wg show <config.interface> dump`
 - read config files
   - check duplicate users
+  - check duplicate or invalid user groups
   - check duplicate vms
   - check all user ips are in wg interface subnet
-  - check VMs and resources defined in access section are present in `vms` or `resources` section
+  - check access owners are known users or user groups, and VMs/resources defined in access section are present in `vms` or `resources` section
   - check resources reference known VMs and valid TCP/UDP ports
   - other reasonable consistency checks
 - check all wg users (hashes) are in file users (hash) and that active users' ips are the same
@@ -143,9 +153,10 @@ At the end of each command clearly and concisely report the result.
 `wgman list [filter]`
 
 - calls the `check` internally for the state and config validation. If fails - return with errors same a `check`.
-- list users, their ips, and access summary in the form `(vm1,vm2)` or `(none)`
-- list VMs and resources; each resource shows its referenced VM and ports
-- if filter is specified, the program outputs accesses for the user = filter
+- list users, their ips, and merged effective access summary in the form `(vm1,vm2)` or `(none)`
+- list user groups in compact form, VMs, and resources; each resource shows its referenced VM and ports
+- if filter is a user, output that user's merged effective access. Access inherited only from user groups is annotated with the sorted source group names, e.g. `mailvm (developers)` or `mailvm (devs,ops)`.
+- if filter is a user group, output direct configured access for that group only.
 - when stdout is interactive, `none` access markers are grey and `*` access markers are red; `--no-color` suppresses this
 
 ## Show
@@ -174,7 +185,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 
 - calls the `check` internally for the state and config validation.
 - refuse to run if `check` detects any hard errors or ipset drift
-- check, if the user is not already created
+- check, if the user is not already created and does not conflict with any user group name
 - if the second arg is present it is an IP - use it as client ip. Otherwise, generate ip from the interface ip range (use max available IP among the users + 1, error on failure)
 - generate wireguard private and public keys for the new user (check `wg` man page)
 - check next arg (after the IP if it was there), it may be a comma separated (no space) list of VMs/resources to add access to. If the list is present, check that all access targets are in the config (error otherwise)
@@ -197,7 +208,7 @@ Internally, the "deploy" part must be coded as a routine, that applies changes t
 - refuse to run if `check` detects any hard errors or ipset drift
 - check, if the user exists
 - issue a warning to confirm if the user XXX (ip), with access to x,y,z must be deleted
-- update `db.yaml`: remove user and his access entries
+- update `db.yaml`: remove user, his access entries, and his membership from all user groups
 - update system state (deploy)
   - remove corresponding ipset entries: `ipset del <set> <client-ip>` or `ipset del <set> <client-ip>,<vm-ip>`
   - remove wg entry `wg set <config.interface> peer <client-pulic-key> remove`
@@ -210,14 +221,30 @@ Reuse the `deploy` routine to update the state.
 
 - calls the `check` internally for the state and config validation.
 - refuse to run if `check` detects any hard errors or ipset drift
-- check, if the user exists
-- read the arg that follows username. If it is `activate` or `deactivate`, toggle the user's inactive state and apply live WireGuard/ipset changes immediately. Otherwise it must be a list of existing VMs/resources, separated by commas (no space), prefixed by `+` or `-`
-- `+/-` represent intended change in access - add or remove the VM/resource from the access list
+- check, if the name exists as a user or user group
+- read the arg that follows name. If it is `activate` or `deactivate`, the name must be a user; toggle the user's inactive state and apply live WireGuard/ipset changes immediately. User groups cannot be activated or deactivated. Otherwise it must be a list of existing VMs/resources, separated by commas (no space), prefixed by `+` or `-`
+- `+/-` represent intended direct access change - add or remove the VM/resource from the user's or user group's access list
 - update system state (deploy) - update the relevant ipsets
 - `deactivate` writes `inactive: true`, preserves the user record/comment/access list, deletes relevant managed ipset entries, and removes the WireGuard peer
 - `activate` omits the `inactive` field from written YAML, preserves the user record/comment/access list, adds the WireGuard peer, and adds relevant managed ipset entries
 
 Reuse the `deploy` routine to update the state.
+
+## User groups
+
+`wgman usergroup <group> [+user1,-user2...]`
+
+- calls the `check` internally for the state and config validation.
+- refuse to run if `check` detects any hard errors or ipset drift
+- if the user list is not given, list users in the given group. If the group does not exist, fail with a clear error.
+- if the user list is given:
+  - the user list is comma-separated with no spaces and each user is prefixed with `+` or `-`
+  - all referenced users must exist
+  - a missing user group is created only when at least one `+user` operation is present
+  - removing users from a missing user group is an error
+  - update `db.yaml`
+  - update system state by applying the relevant effective ipset deltas
+- `--dry-run` reports the planned membership and ipset changes without writing `db.yaml` or applying live changes.
 
 ## Deploy
 
@@ -238,12 +265,13 @@ The following decisions were agreed during planning and should guide implementat
   - hard errors: invalid config/schema, duplicate IPs, invalid names, unknown access targets in `access`, invalid resource definitions, users outside the WireGuard interface subnet, WireGuard peer mismatches, missing configured ipsets, and similar issues that make the intended state unsafe or ambiguous;
   - ipset drift: missing or extra entries in the configured access ipsets compared with `db.yaml`.
 - `check` reports hard errors and ipset drift. Any finding makes the command fail.
-- `create`, `remove`, and `mod` must refuse to run if `check` reports either hard errors or ipset drift. Direct changes to `db.yaml` should be applied through a clean state.
+- `create`, `remove`, `mod`, and `usergroup` must refuse to run if `check` reports either hard errors or ipset drift. Direct changes to `db.yaml` should be applied through a clean state.
 - `deploy` may run when the only detected problems are ipset drift or restorable WireGuard peer drift for known DB users. It must treat `db.yaml` as the intended access state and reconcile WireGuard peers and configured ipsets to it.
 - Internal `check` must prepare concrete ipset deltas so command logic can either report them or apply them.
 - Internal `check` must prepare concrete WireGuard peer add deltas for active users missing live and removal deltas for inactive users that still exist live.
 - The configured `sets.all`, `sets.ip_matrix`, and `sets.port_matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
 - Inactive users remain in `db.yaml` but are excluded from expected live WireGuard peers and managed ipsets.
+- Expected ipset state is computed from effective per-user access after expanding user groups.
 - `deploy` applies deltas only: add missing active-user WireGuard peers, add missing expected ipset entries, delete unexpected ipset entries, and remove inactive users' live WireGuard peers. It must not flush/rebuild whole ipsets unless a future explicit option is added.
 
 ### Key material and generated configs
@@ -262,9 +290,9 @@ The following decisions were agreed during planning and should guide implementat
 ### Confirmation and dry-run behavior
 
 - `remove` and `deploy` prompt by default.
-- `create` and `mod` do not prompt after validation.
+- `create`, `mod`, and `usergroup` do not prompt after validation.
 - Global `--yes` skips confirmations for automation.
-- Global `--dry-run` is supported by `deploy`, `remove`, and `mod`; it reports planned changes without applying them. For `deploy`, dry-run includes planned WireGuard peer additions and removals.
+- Global `--dry-run` is supported by `deploy`, `remove`, `mod`, and `usergroup`; it reports planned changes without applying them. For `deploy`, dry-run includes planned WireGuard peer additions and removals.
 
 ### Configuration format and dependencies
 
@@ -284,9 +312,10 @@ The following decisions were agreed during planning and should guide implementat
 ### Names
 
 - User and VM names must match `^[A-Za-z0-9_-]+$`.
+- User group names must match `^[A-Za-z0-9_-]+$`.
 - Resource names must match `^[A-Za-z0-9_@-]+$`, allowing names such as `ssh@sandbox`.
 - Names are case-sensitive for lookup.
-- Creating a user or VM name that differs only by case from an existing user or VM name must be rejected to avoid operator confusion. VMs and resources share one access-target namespace; exact and case-only conflicts between VM and resource names must be rejected.
+- Creating a user or user group name that differs only by case from an existing user or user group name must be rejected to avoid operator confusion. VMs and resources share one access-target namespace; exact and case-only conflicts between VM and resource names must be rejected.
 - These restrictions keep generated filenames such as `<user>.vpn.conf` predictable.
 
 ## Unit testing strategy
@@ -309,7 +338,9 @@ Recommended unit test coverage:
 - Validate config and database structures:
   - required keys in `config.yaml` and `db.yaml`;
   - valid user, VM, and resource names;
+  - valid user group names and known group members;
   - duplicate/case-conflicting names and duplicate IPs;
+  - access owners referencing unknown users/user groups;
   - access entries referencing unknown VMs/resources;
   - resources referencing known VMs and valid unique ports;
   - `*` access handled only as all-access/admin.
@@ -322,6 +353,7 @@ Recommended unit test coverage:
   - hard errors and drift are clearly separated for callers.
 - Delta/deploy planning:
   - compute expected ipset state from `db.yaml`;
+  - expand user group access into effective per-user access;
   - generate port-matrix entries for resource access;
   - generate minimal add/delete deltas;
   - treat configured ipsets as fully owned by `wgman`;

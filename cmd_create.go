@@ -253,9 +253,17 @@ func planCreateUser(cfg *Config, db *DB, args *createArgs, sys SystemAdapter) (*
 	if _, ok := db.Users[args.Name]; ok {
 		return nil, fmt.Errorf("user %q already exists", args.Name)
 	}
+	if _, ok := db.UserGroups[args.Name]; ok {
+		return nil, fmt.Errorf("user name %q conflicts with existing user group", args.Name)
+	}
 	for existing := range db.Users {
 		if caseFold(existing) == caseFold(args.Name) {
 			return nil, fmt.Errorf("user name %q conflicts with %q (case)", args.Name, existing)
+		}
+	}
+	for existing := range db.UserGroups {
+		if caseFold(existing) == caseFold(args.Name) {
+			return nil, fmt.Errorf("user name %q conflicts with user group %q (case)", args.Name, existing)
 		}
 	}
 

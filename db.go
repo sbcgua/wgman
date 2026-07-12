@@ -136,6 +136,32 @@ func validateDB(db *DB) []string {
 		}
 	}
 
+	// Validate user group names and membership. Users and user groups share the
+	// access-principal namespace, so exact and case-only conflicts are rejected.
+	for name, members := range db.UserGroups {
+		if !nameRe.MatchString(name) {
+			errs = append(errs, fmt.Sprintf("db.yaml: invalid user group name %q", name))
+		}
+		if _, ok := db.Users[name]; ok {
+			errs = append(errs, fmt.Sprintf("db.yaml: user group %q conflicts with user of the same name", name))
+		}
+		if conflict, ok := seenLower[caseFold(name)]; ok {
+			errs = append(errs, fmt.Sprintf("db.yaml: user group name %q conflicts with %q (case)", name, conflict))
+		}
+		seenLower[caseFold(name)] = name
+
+		seenMembers := map[string]bool{}
+		for _, member := range members {
+			if _, ok := db.Users[member]; !ok {
+				errs = append(errs, fmt.Sprintf("db.yaml: user group %q references unknown user %q", name, member))
+			}
+			if seenMembers[member] {
+				errs = append(errs, fmt.Sprintf("db.yaml: user group %q contains duplicate user %q", name, member))
+			}
+			seenMembers[member] = true
+		}
+	}
+
 	// Validate VM names.
 	seenVMLower := map[string]string{}
 	for name, ipValue := range db.VMs {
@@ -220,15 +246,17 @@ func validateDB(db *DB) []string {
 	}
 
 	// Validate access entries.
-	for user, vms := range db.Access {
-		if _, ok := db.Users[user]; !ok {
-			errs = append(errs, fmt.Sprintf("db.yaml: access references unknown user %q", user))
+	for principal, vms := range db.Access {
+		if _, ok := db.Users[principal]; !ok {
+			if _, ok := db.UserGroups[principal]; !ok {
+				errs = append(errs, fmt.Sprintf("db.yaml: access references unknown user or user group %q", principal))
+			}
 		}
 		hasAdminStar := false
 		seenAccess := map[string]bool{}
 		for _, vm := range vms {
 			if seenAccess[vm] {
-				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q contains duplicate entry %q", user, vm))
+				errs = append(errs, fmt.Sprintf("db.yaml: access for %q contains duplicate entry %q", principal, vm))
 			}
 			seenAccess[vm] = true
 			if vm == "*" {
@@ -236,16 +264,16 @@ func validateDB(db *DB) []string {
 				continue
 			}
 			if !resourceNameRe.MatchString(vm) {
-				errs = append(errs, fmt.Sprintf("db.yaml: access for user %q: invalid access target name %q", user, vm))
+				errs = append(errs, fmt.Sprintf("db.yaml: access for %q: invalid access target name %q", principal, vm))
 			}
 			if _, ok := db.VMs[vm]; !ok {
 				if _, ok := db.Resources[vm]; !ok {
-					errs = append(errs, fmt.Sprintf("db.yaml: access for user %q references unknown access target %q", user, vm))
+					errs = append(errs, fmt.Sprintf("db.yaml: access for %q references unknown access target %q", principal, vm))
 				}
 			}
 		}
 		if hasAdminStar && len(vms) > 1 {
-			errs = append(errs, fmt.Sprintf("db.yaml: user %q: access contains \"*\" mixed with other VMs; \"*\" must be the sole entry", user))
+			errs = append(errs, fmt.Sprintf("db.yaml: %q: access contains \"*\" mixed with other VMs; \"*\" must be the sole entry", principal))
 		}
 	}
 
@@ -256,13 +284,17 @@ func validateDB(db *DB) []string {
 // cloneDB returns an independent copy suitable for planning DB changes.
 func cloneDB(db *DB) *DB {
 	out := &DB{
-		Users:     make(map[string]UserEntry, len(db.Users)),
-		VMs:       make(map[string]string, len(db.VMs)),
-		Resources: make(map[string]ResourceEntry, len(db.Resources)),
-		Access:    make(map[string][]string, len(db.Access)),
+		Users:      make(map[string]UserEntry, len(db.Users)),
+		UserGroups: make(map[string][]string, len(db.UserGroups)),
+		VMs:        make(map[string]string, len(db.VMs)),
+		Resources:  make(map[string]ResourceEntry, len(db.Resources)),
+		Access:     make(map[string][]string, len(db.Access)),
 	}
 	for name, user := range db.Users {
 		out.Users[name] = user
+	}
+	for name, members := range db.UserGroups {
+		out.UserGroups[name] = append([]string(nil), members...)
 	}
 	for name, ip := range db.VMs {
 		out.VMs[name] = ip
@@ -375,6 +407,7 @@ func marshalDBDeterministic(db *DB) ([]byte, error) {
 
 	root.Content = append(root.Content,
 		scalarNode("users"), usersNode(db.Users),
+		scalarNode("user-groups"), userGroupsNode(db.UserGroups),
 		scalarNode("vms"), stringMapNode(db.VMs),
 		scalarNode("resources"), resourcesNode(db.Resources),
 		scalarNode("access"), accessNode(db.Access),
@@ -393,6 +426,8 @@ func marshalDBDeterministic(db *DB) ([]byte, error) {
 }
 
 func addBlankLinesBetweenDBSections(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("\nuser-groups:\n"), []byte("\n\nuser-groups:\n"))
+	data = bytes.ReplaceAll(data, []byte("\nuser-groups: {}\n"), []byte("\n\nuser-groups: {}\n"))
 	data = bytes.ReplaceAll(data, []byte("\nvms:\n"), []byte("\n\nvms:\n"))
 	data = bytes.ReplaceAll(data, []byte("\nresources:\n"), []byte("\n\nresources:\n"))
 	data = bytes.ReplaceAll(data, []byte("\nresources: {}\n"), []byte("\n\nresources: {}\n"))
@@ -416,6 +451,23 @@ func usersNode(users map[string]UserEntry) *yaml.Node {
 			entry.Content = append(entry.Content, scalarNode("inactive"), boolNode(true))
 		}
 		node.Content = append(node.Content, scalarNode(name), entry)
+	}
+	return node
+}
+
+func userGroupsNode(userGroups map[string][]string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	for _, name := range sortedKeys(userGroups) {
+		members := append([]string(nil), userGroups[name]...)
+		sort.Strings(members)
+		seq := &yaml.Node{Kind: yaml.SequenceNode}
+		if len(members) == 0 {
+			seq.Style = yaml.FlowStyle
+		}
+		for _, member := range members {
+			seq.Content = append(seq.Content, scalarNode(member))
+		}
+		node.Content = append(node.Content, scalarNode(name), seq)
 	}
 	return node
 }

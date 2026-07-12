@@ -67,7 +67,24 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 	for _, name := range sortedKeys(db.Users) {
 		u := db.Users[name]
 		nameCell := showUserNameCell(name, u.Inactive, color)
-		fmt.Fprintf(stdout, "  %s%s %-15s %s\n", nameCell.display, paddingFor(nameCell.plain, 20), u.IP, formatAccessSummary(db, db.Access[name], color))
+		fmt.Fprintf(stdout, "  %s%s %-15s %s\n", nameCell.display, paddingFor(nameCell.plain, 20), u.IP, formatAccessSummary(db, effectiveAccessForUser(db, name), color))
+	}
+
+	fmt.Fprintln(stdout, "")
+	fmt.Fprintln(stdout, formatSectionHeader("User Groups", color))
+	if len(db.UserGroups) == 0 {
+		fmt.Fprintln(stdout, "  (none)")
+	} else {
+		nameWidth := maxWidth(sortedKeys(db.UserGroups), 20)
+		for _, name := range sortedKeys(db.UserGroups) {
+			members := append([]string(nil), db.UserGroups[name]...)
+			sort.Strings(members)
+			memberText := strings.Join(members, ",")
+			if memberText == "" {
+				memberText = "(none)"
+			}
+			fmt.Fprintf(stdout, "  %-*s %s\n", nameWidth, name+":", memberText)
+		}
 	}
 
 	fmt.Fprintln(stdout, "")
@@ -205,27 +222,54 @@ func colorAccessItem(db *DB, item string, color bool) string {
 // runListUser prints the access list for a single named user.
 func runListUser(db *DB, filter string, stdout, stderr io.Writer, color bool) int {
 	u, ok := db.Users[filter]
-	if !ok {
-		fmt.Fprintf(stderr, "error: user %q not found\n", filter)
-		fmt.Fprintln(stderr, "list: FAILED")
-		return 1
+	if ok {
+		return runListRealUser(db, filter, u, stdout, color)
+	}
+	if _, ok := db.UserGroups[filter]; ok {
+		return runListUserGroup(db, filter, stdout, color)
 	}
 
-	vms := db.Access[filter]
+	fmt.Fprintf(stderr, "error: user or user group %q not found\n", filter)
+	fmt.Fprintln(stderr, "list: FAILED")
+	return 1
+}
+
+func runListRealUser(db *DB, filter string, u UserEntry, stdout io.Writer, color bool) int {
+	entries := effectiveAccessEntriesForUser(db, filter)
 	nameCell := showUserNameCell(filter, u.Inactive, color)
 	fmt.Fprintf(stdout, "%s:\n", nameCell.display)
-	if len(vms) == 0 {
+	if len(entries) == 0 {
 		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem(db, "none", color))
 		// fmt.Fprintln(stdout, "list: OK")
 		return 0
 	}
 
-	sorted := make([]string, len(vms))
-	copy(sorted, vms)
+	for _, entry := range entries {
+		fmt.Fprintf(stdout, "  %s\n", formatAccessEntryWithGroups(db, entry, color))
+	}
+	// fmt.Fprintln(stdout, "list: OK")
+	return 0
+}
+
+func runListUserGroup(db *DB, group string, stdout io.Writer, color bool) int {
+	fmt.Fprintf(stdout, "%s:\n", group)
+	vms := db.Access[group]
+	if len(vms) == 0 {
+		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem(db, "none", color))
+		return 0
+	}
+	sorted := append([]string(nil), vms...)
 	sort.Strings(sorted)
 	for _, vm := range sorted {
 		fmt.Fprintf(stdout, "  %s\n", colorAccessItem(db, vm, color))
 	}
-	// fmt.Fprintln(stdout, "list: OK")
 	return 0
+}
+
+func formatAccessEntryWithGroups(db *DB, entry EffectiveAccessEntry, color bool) string {
+	out := colorAccessItem(db, entry.Target, color)
+	if !entry.Direct && len(entry.Groups) > 0 {
+		out += " (" + strings.Join(entry.Groups, ",") + ")"
+	}
+	return out
 }

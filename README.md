@@ -18,6 +18,12 @@
       pub: BOB_PUB_KEY...
       inactive: true
 
+  user-groups:
+    admins:
+      - admin
+    developers:
+      - alice
+
   vms:
     sandbox: 192.168.122.100
     mailvm: 192.168.122.101
@@ -33,10 +39,12 @@
         - tcp:53
 
   access:
-    admin:
+    admins:
       - "*"
-    alice:
+    developers:
       - ssh@sandbox
+    alice:
+      - sandbox
     bob:
       - sandbox
       - mailvm
@@ -176,11 +184,12 @@ Check config, WireGuard peers, and ipset state consistency:
 sudo wgman check
 ```
 
-List users, resources, and optional user access:
+List users, user groups, resources, and optional user or user group access:
 
 ```sh
 sudo wgman list
 sudo wgman list alice
+sudo wgman list developers
 # Suppress interactive color output:
 sudo wgman list --no-color
 ```
@@ -234,9 +243,9 @@ Skip confirmation prompts where supported:
 sudo wgman deploy --yes
 ```
 
-`--dry-run` is supported by `deploy`, `remove`, and `mod`. It is rejected for
-commands such as `create` and `init-ipsets` so planned-change output is not
-confused with real changes.
+`--dry-run` is supported by `deploy`, `remove`, `mod`, and `usergroup`. It is
+rejected for commands such as `create` and `init-ipsets` so planned-change
+output is not confused with real changes.
 
 Create a user with an auto-assigned IP:
 
@@ -282,7 +291,22 @@ Modify resource access:
 
 ```sh
 sudo wgman mod alice +mailvm,-sandbox
+sudo wgman mod developers +mailvm
 ```
+
+Manage user group membership:
+
+```sh
+sudo wgman usergroup developers
+sudo wgman usergroup developers +alice,-bob
+sudo wgman usergroup --dry-run developers +alice
+```
+
+If user group does not exist it is created.
+
+User group access and direct user access merge for each user. In `wgman list
+alice`, access inherited only from user groups is annotated with the group name,
+for example `mailvm (developers)`.
 
 Deactivate or reactivate a user without deleting their DB record:
 
@@ -296,6 +320,8 @@ Remove a user:
 ```sh
 sudo wgman remove alice
 ```
+
+Removing a user also removes that user from all user groups.
 
 Use an alternate config directory for testing or staging:
 

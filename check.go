@@ -198,9 +198,9 @@ func computeExpectedIPSets(db *DB) ExpectedIPSets {
 		PortMatrix: make(map[string]string),
 	}
 
-	for user, vms := range db.Access {
-		u, ok := db.Users[user]
-		if !ok || u.Inactive {
+	for user, u := range db.Users {
+		vms := effectiveAccessForUser(db, user)
+		if u.Inactive {
 			continue
 		}
 		for _, vm := range vms {

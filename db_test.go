@@ -71,6 +71,38 @@ vms:
 	}
 }
 
+func TestLoadDB_UserGroups(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	h.writeFile(dir, "db.yaml", `
+users:
+  alice:
+    ip: 10.8.0.10
+    pub: ALICE_PUB=
+  bob:
+    ip: 10.8.0.11
+    pub: BOB_PUB=
+user-groups:
+  devs:
+    - alice
+    - bob
+  empty: []
+vms:
+  sandbox: 192.168.122.100
+access:
+  devs:
+    - sandbox
+`)
+	db, err := LoadDB(dir)
+	h.assertNoError(err)
+	if got := strings.Join(db.UserGroups["devs"], ","); got != "alice,bob" {
+		t.Errorf("devs members = %q, want alice,bob", got)
+	}
+	if members, ok := db.UserGroups["empty"]; !ok || len(members) != 0 {
+		t.Errorf("empty group = %#v, want empty slice", members)
+	}
+}
+
 func TestLoadDB_Resources(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -200,6 +232,26 @@ var dbValidationTests = []struct {
 		wantErr: "unknown user",
 	},
 	{
+		name:    "invalid user group name",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nuser-groups:\n  \"dev team\": [alice]\nvms:\n  sandbox: 192.168.122.100\n",
+		wantErr: "invalid user group name",
+	},
+	{
+		name:    "user group unknown member",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nuser-groups:\n  devs: [bob]\nvms:\n  sandbox: 192.168.122.100\n",
+		wantErr: "unknown user",
+	},
+	{
+		name:    "user group conflicts with user",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nuser-groups:\n  Alice: []\nvms:\n  sandbox: 192.168.122.100\n",
+		wantErr: "conflicts",
+	},
+	{
+		name:    "user group duplicate member",
+		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nuser-groups:\n  devs: [alice, alice]\nvms:\n  sandbox: 192.168.122.100\n",
+		wantErr: "duplicate user",
+	},
+	{
 		name:    "duplicate access entry",
 		yaml:    "users:\n  alice:\n    ip: 10.8.0.10\n    pub: AAAA=\nvms:\n  sandbox: 192.168.122.100\naccess:\n  alice:\n    - sandbox\n    - sandbox\n",
 		wantErr: "duplicate entry",
@@ -321,7 +373,7 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read db.yaml: %v", err)
 	}
-	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n    comment: temporary contractor\n    inactive: true\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\nresources: {}\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
+	want := "users:\n  alice:\n    ip: 10.8.0.10\n    pub: ALICE_PUB=\n  bob:\n    ip: 10.8.0.15\n    pub: BOB_PUB=\n    comment: temporary contractor\n    inactive: true\n\nuser-groups: {}\n\nvms:\n  mailvm: 192.168.122.101\n  sandbox: 192.168.122.100\n\nresources: {}\n\naccess:\n  alice:\n    - sandbox\n  bob:\n    - sandbox\n    - mailvm\n"
 	if string(data) != want {
 		t.Errorf("db.yaml =\n%s\nwant:\n%s", string(data), want)
 	}
@@ -337,10 +389,45 @@ func TestSaveDBAtomic_DeterministicOutput(t *testing.T) {
 	}
 }
 
+func TestSaveDBAtomic_WritesUserGroups(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	db := &DB{
+		Users: map[string]UserEntry{
+			"alice": {IP: "10.8.0.10", Pub: "ALICE_PUB="},
+			"bob":   {IP: "10.8.0.11", Pub: "BOB_PUB="},
+		},
+		UserGroups: map[string][]string{
+			"empty": {},
+			"devs":  {"bob", "alice"},
+		},
+		VMs:       map[string]string{"sandbox": "192.168.122.100"},
+		Resources: map[string]ResourceEntry{},
+		Access:    map[string][]string{"devs": {"sandbox"}},
+	}
+
+	if err := SaveDBAtomic(dir, db); err != nil {
+		t.Fatalf("SaveDBAtomic: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "db.yaml"))
+	if err != nil {
+		t.Fatalf("read db.yaml: %v", err)
+	}
+	out := string(data)
+	for _, want := range []string{"user-groups:\n", "  devs:\n    - alice\n    - bob\n", "  empty: []\n", "access:\n  devs:\n    - sandbox\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("saved db missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestCloneDBIsIndependent(t *testing.T) {
 	original := &DB{
 		Users: map[string]UserEntry{"alice": {IP: "10.8.0.10", Pub: "ALICE"}},
-		VMs:   map[string]string{"sandbox": "192.168.122.100"},
+		UserGroups: map[string][]string{
+			"devs": {"alice"},
+		},
+		VMs: map[string]string{"sandbox": "192.168.122.100"},
 		Resources: map[string]ResourceEntry{
 			"ssh@sandbox": {VM: "sandbox", Ports: ResourcePorts{{Protocol: "tcp", Port: 22}}},
 		},
@@ -349,12 +436,16 @@ func TestCloneDBIsIndependent(t *testing.T) {
 
 	cloned := cloneDB(original)
 	cloned.Users["alice"] = UserEntry{IP: "10.8.0.20", Pub: "CHANGED"}
+	cloned.UserGroups["devs"][0] = "bob"
 	cloned.VMs["sandbox"] = "192.168.122.200"
 	cloned.Resources["ssh@sandbox"] = ResourceEntry{VM: "sandbox", Ports: ResourcePorts{{Protocol: "tcp", Port: 2222}}}
 	cloned.Access["alice"][0] = "changed"
 
 	if original.Users["alice"].IP != "10.8.0.10" {
 		t.Error("cloneDB() aliased the users map")
+	}
+	if original.UserGroups["devs"][0] != "alice" {
+		t.Error("cloneDB() aliased the user groups map")
 	}
 	if original.VMs["sandbox"] != "192.168.122.100" {
 		t.Error("cloneDB() aliased the VMs map")
