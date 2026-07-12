@@ -17,7 +17,7 @@ Commands:
   check        Validate config/db and live WireGuard/ipset state
   list [user]  List users, resources, and optional access for a user
   show         Show live WireGuard peers mapped to user names
-  init-ipsets  Create the managed ipsets defined in config.yaml
+  init-ipsets  Create, flush, or destroy the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
   create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
   add          Alias for create
@@ -31,6 +31,8 @@ Global flags:
   --config-dir <dir>  Config directory (default /etc/wireguard/wgman)
   --yes               Skip interactive confirmation prompts
   --dry-run           Show planned changes without applying them (deploy, remove, mod, usergroup only)
+  --flush             Flush managed ipsets (init-ipsets only)
+  --destroy           Destroy managed ipsets (init-ipsets only)
   --no-color          Disable colorized terminal output
 
 Run 'wgman help' or 'wgman -h' for this message.
@@ -38,12 +40,14 @@ Run 'wgman help' or 'wgman -h' for this message.
 
 // globalFlags holds parsed global flags.
 type globalFlags struct {
-	configDir        string
-	yes              bool
-	dryRun           bool
-	noColor          bool
-	createComment    string
-	createCommentSet bool
+	configDir         string
+	yes               bool
+	dryRun            bool
+	noColor           bool
+	createComment     string
+	createCommentSet  bool
+	initIPSetsFlush   bool
+	initIPSetsDestroy bool
 }
 
 type parsedCommand struct {
@@ -124,6 +128,8 @@ func parseCommandArgs(args []string, stderr io.Writer) (*parsedCommand, error) {
 	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
 	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
 	fs.BoolVar(&gf.dryRun, "dry-run", false, "show planned changes without applying")
+	fs.BoolVar(&gf.initIPSetsFlush, "flush", false, "flush managed ipsets")
+	fs.BoolVar(&gf.initIPSetsDestroy, "destroy", false, "destroy managed ipsets")
 	fs.BoolVar(&gf.noColor, "no-color", false, "disable colorized terminal output")
 	fs.Var(trackedStringFlag{value: &gf.createComment, set: &gf.createCommentSet}, "c", "create/add user comment")
 
@@ -154,6 +160,11 @@ func parseCommandArgs(args []string, stderr io.Writer) (*parsedCommand, error) {
 	cmdArgs := fs.Args() // positional args for the command
 	if gf.createCommentSet && cmd != "create" && cmd != "add" {
 		err := fmt.Errorf("-c is only supported by create/add")
+		fmt.Fprintln(stderr, "error:", err)
+		return nil, err
+	}
+	if (gf.initIPSetsFlush || gf.initIPSetsDestroy) && cmd != "init-ipsets" {
+		err := fmt.Errorf("--flush and --destroy are only supported by init-ipsets")
 		fmt.Fprintln(stderr, "error:", err)
 		return nil, err
 	}

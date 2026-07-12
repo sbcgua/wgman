@@ -414,6 +414,19 @@ func TestRunApp_CommentFlagRejectedForOtherCommands(t *testing.T) {
 	}
 }
 
+func TestRunApp_InitIPSetFlagsRejectedForOtherCommands(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"--flush", "check"}, app)
+	if code != 2 {
+		t.Fatalf("check --flush exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "only supported by init-ipsets") {
+		t.Errorf("expected unsupported init-ipsets flag error, got: %s", stderr.String())
+	}
+}
+
 func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()

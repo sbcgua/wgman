@@ -103,6 +103,8 @@ Global flags:
 
 - `--yes` - skip interactive confirmation prompts.
 - `--dry-run` - show planned changes without applying them. Supported by `deploy`, `remove`, `mod`, and `usergroup`.
+- `--flush` - flush managed ipsets. Supported by `init-ipsets`.
+- `--destroy` - destroy managed ipsets. Supported by `init-ipsets`.
 - `--no-color` - suppress colorized terminal output.
 
 ### Check
@@ -311,6 +313,21 @@ The following decisions were agreed during planning and should guide implementat
 - `check` verifies that the configured ipsets exist and reports clear errors if they do not.
 - `init-ipsets` creates all three managed sets: `hash:ip`, `hash:net,net`, and `hash:ip,port,ip`.
 
+## Init ipsets
+
+`wgman init-ipsets [--flush] [--destroy]`
+
+- with no flags, creates all three managed sets using idempotent creation:
+  - `sets.all` as `hash:ip`
+  - `sets.ip_matrix` as `hash:net,net`
+  - `sets.port_matrix` as `hash:ip,port,ip`
+- with `--flush`, flushes all entries from the three managed sets.
+- with `--destroy`, destroys the three managed sets.
+- with `--flush --destroy`, flushes first, then destroys.
+- missing sets during `--flush` or `--destroy` are treated as already clean and do not fail the command.
+- destroy errors caused by sets still being referenced by firewall rules are errors; run the firewall hook `down` action before manual destroy.
+- this command loads `config.yaml` only and does not run the full `check`, so it can be used during WireGuard startup and teardown.
+
 ### Names
 
 - User and VM names must match `^[A-Za-z0-9_-]+$`.
@@ -392,3 +409,9 @@ See [PORT_LIMITED_ACCESS_IMPROVEMENT.md](./archive/PORT_LIMITED_ACCESS_IMPROVEME
   - color VMs in resources in the user output in different colors (yellow and blue)
 - `cmd_check`: color status of final messages OK and FAILED in green and red respectively. Respect --no-color flag.
 - `wgman-firewall-hook`: extract interface and sets from yaml by default
+
+## Postimplementation Improvement #4 - User groups support
+
+- See [USER-GROUPS.md](./archive/USER-GROUPS.md). Also integrated in the text above.
+- added `del` alias to `remove` command
+- added --flush and --destroy features to `init-ipsets`

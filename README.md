@@ -150,8 +150,8 @@ sudo wgman deploy
 Then add the hook commands to the WireGuard interface config:
 
 ```ini
-PostUp = /usr/local/sbin/wgman-firewall-hook up
-PreDown = /usr/local/sbin/wgman-firewall-hook down
+PostUp = /usr/local/sbin/wgman init-ipsets && /usr/local/sbin/wgman-firewall-hook up && /usr/local/sbin/wgman deploy --yes
+PreDown = /usr/local/sbin/wgman init-ipsets --flush && /usr/local/sbin/wgman-firewall-hook down
 ```
 
 The script manages only its dedicated `iptables` chains and parent jump rules. It allows full-VM TCP/ICMP forwarding through the IP matrix set, and TCP/UDP service forwarding through the port matrix set. Resource entries do not grant ICMP. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
@@ -214,6 +214,22 @@ Create the managed ipsets defined in `config.yaml`:
 ```sh
 sudo wgman init-ipsets
 ```
+
+Flush managed ipset contents, useful in WireGuard `PreDown` hooks:
+
+```sh
+sudo wgman init-ipsets --flush
+```
+
+Destroy managed ipsets manually after firewall rules are removed:
+
+```sh
+sudo wgman-firewall-hook down
+sudo wgman init-ipsets --destroy
+```
+
+`--flush --destroy` flushes first, then destroys. Missing sets during flush or
+destroy are treated as already-clean state.
 
 The config must define all three managed sets:
 

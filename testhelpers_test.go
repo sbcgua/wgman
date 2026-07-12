@@ -93,26 +93,28 @@ func (h *testHelper) assertError(err error, want string) {
 // fakeSystem is a minimal fake SystemAdapter for tests.
 // Fields can be populated per test case as needed.
 type fakeSystem struct {
-	isRoot         bool
-	isTerminal     bool
-	terminalWriter io.Writer
-	subnetResult   string
-	subnetErr      error
-	wgDumpResult   string
-	wgDumpErr      error
-	ipsetResults   map[string]string
-	ipsetErrs      map[string]error
-	ipsetCreateErr error
-	ipsetAddErr    error
-	ipsetDelErr    error
-	ipsetDelErrs   map[string]error
-	wgSetErr       error
-	wgDelErr       error
-	appliedOps     []string // records IPSetCreate/Add/Del and WGSet/Del calls
-	genKeyResult   string
-	genKeyErr      error
-	pubKeyResult   string
-	pubKeyErr      error
+	isRoot          bool
+	isTerminal      bool
+	terminalWriter  io.Writer
+	subnetResult    string
+	subnetErr       error
+	wgDumpResult    string
+	wgDumpErr       error
+	ipsetResults    map[string]string
+	ipsetErrs       map[string]error
+	ipsetCreateErr  error
+	ipsetFlushErr   error
+	ipsetDestroyErr error
+	ipsetAddErr     error
+	ipsetDelErr     error
+	ipsetDelErrs    map[string]error
+	wgSetErr        error
+	wgDelErr        error
+	appliedOps      []string // records IPSetCreate/Add/Del and WGSet/Del calls
+	genKeyResult    string
+	genKeyErr       error
+	pubKeyResult    string
+	pubKeyErr       error
 }
 
 func newFakeSystem() *fakeSystem {
@@ -154,6 +156,22 @@ func (f *fakeSystem) IPSetCreate(setname, setType string, withComment bool) erro
 		commentFlag = "comment"
 	}
 	f.appliedOps = append(f.appliedOps, "create:"+setname+":"+setType+":"+commentFlag)
+	return nil
+}
+
+func (f *fakeSystem) IPSetFlush(setname string) error {
+	if f.ipsetFlushErr != nil {
+		return f.ipsetFlushErr
+	}
+	f.appliedOps = append(f.appliedOps, "flush:"+setname)
+	return nil
+}
+
+func (f *fakeSystem) IPSetDestroy(setname string) error {
+	if f.ipsetDestroyErr != nil {
+		return f.ipsetDestroyErr
+	}
+	f.appliedOps = append(f.appliedOps, "destroy:"+setname)
 	return nil
 }
 

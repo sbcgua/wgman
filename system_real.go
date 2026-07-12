@@ -72,6 +72,20 @@ func (r *RealSystem) IPSetCreate(setname, setType string, withComment bool) erro
 	return nil
 }
 
+func (r *RealSystem) IPSetFlush(setname string) error {
+	if out, err := exec.Command("ipset", "flush", setname).CombinedOutput(); err != nil {
+		return fmt.Errorf("ipset flush %s: %w: %s", setname, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func (r *RealSystem) IPSetDestroy(setname string) error {
+	if out, err := exec.Command("ipset", "destroy", setname).CombinedOutput(); err != nil {
+		return fmt.Errorf("ipset destroy %s: %w: %s", setname, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func (r *RealSystem) IPSetAdd(setname, entry, comment string) error {
 	args := []string{"add", setname, entry}
 	if comment != "" {

@@ -128,6 +128,7 @@ future changes. They intentionally omit implementation history.
 - Exit code 2 is used for usage and argument errors.
 - Exit code 1 is used for validation, system, or write failures.
 - `--dry-run` is supported only by `deploy`, `remove`, `mod`, and `usergroup`.
+- `--flush` and `--destroy` are supported only by `init-ipsets`.
 - `--yes` skips prompts for commands that prompt (`deploy`, `remove`).
 - `--no-color` is a global output flag. Color decisions go through `App`'s
   stdout TTY boundary, which delegates terminal detection to `SystemAdapter`;
@@ -140,6 +141,9 @@ future changes. They intentionally omit implementation history.
   edits are manual `db.yaml` edits.
 - `deploy`, `remove`, `mod`, and `usergroup` print planned deltas before
   applying or reporting dry-run results.
+- `init-ipsets --flush` and `init-ipsets --destroy` load only `config.yaml`
+  and do not run `Check`, so they are usable while WireGuard state is coming
+  up or going down. Missing sets in these cleanup modes are non-fatal.
 - Command-level planning helpers return plan structs rather than parallel
   result values. Plans use `IPSetDeltas` and `PeerDeltas` field names for live
   system changes.
