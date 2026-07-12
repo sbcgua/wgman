@@ -45,7 +45,7 @@ func TestRunApp_HelpOutputSmoke(t *testing.T) {
 		t.Fatalf("help exit code = %d, want 0", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "--dry-run", "--no-color"} {
+	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "Alias for remove", "--dry-run", "--no-color"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q:\n%s", want, out)
 		}
@@ -414,6 +414,19 @@ func TestRunApp_CommentFlagRejectedForOtherCommands(t *testing.T) {
 	}
 }
 
+func TestRunApp_InitIPSetFlagsRejectedForOtherCommands(t *testing.T) {
+	app := makeFakeApp(true)
+	var stderr strings.Builder
+	app.Stderr = &stderr
+	code := runApp([]string{"--flush", "check"}, app)
+	if code != 2 {
+		t.Fatalf("check --flush exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "only supported by init-ipsets") {
+		t.Errorf("expected unsupported init-ipsets flag error, got: %s", stderr.String())
+	}
+}
+
 func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -441,5 +454,28 @@ func TestRunApp_AddAliasCreatesUser(t *testing.T) {
 	}
 	if db.Users["carol"].Comment != "temporary contractor" {
 		t.Errorf("carol comment = %q, want temporary contractor", db.Users["carol"].Comment)
+	}
+}
+
+func TestRunApp_DelAliasRemovesUser(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeValidTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	code := runApp([]string{"del", "--config-dir", dir, "--yes", "alice"}, app)
+	if code != 0 {
+		t.Fatalf("del alias exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "removed alice") {
+		t.Errorf("expected remove success output, got: %s", stdout.String())
+	}
+	db, err := LoadDB(dir)
+	if err != nil {
+		t.Fatalf("LoadDB: %v", err)
+	}
+	if _, ok := db.Users["alice"]; ok {
+		t.Fatal("alice still present after del alias")
 	}
 }

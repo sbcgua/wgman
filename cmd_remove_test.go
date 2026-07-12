@@ -34,6 +34,26 @@ func TestPlanRemoveUser(t *testing.T) {
 	}
 }
 
+func TestPlanRemoveUserRemovesFromUserGroups(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{
+		"devs": {"alice", "bob"},
+		"ops":  {"bob"},
+	}
+	db.Access["devs"] = []string{"mailvm"}
+
+	plan, err := planRemoveUser(makeTestCfg(), db, "bob")
+	if err != nil {
+		t.Fatalf("planRemoveUser: %v", err)
+	}
+	if got := strings.Join(plan.UpdatedDB.UserGroups["devs"], ","); got != "alice" {
+		t.Errorf("devs members = %q, want alice", got)
+	}
+	if got := strings.Join(plan.UpdatedDB.UserGroups["ops"], ","); got != "" {
+		t.Errorf("ops members = %q, want empty", got)
+	}
+}
+
 func TestRemove_MissingUser(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()

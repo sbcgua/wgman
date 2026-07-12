@@ -21,12 +21,7 @@ func makeInitIPSetsApp(sys *fakeSystem) (*App, *strings.Builder, *strings.Builde
 	}, stdout, stderr
 }
 
-func TestInitIPSets_CreatesAllAccessSet(t *testing.T) {
-	sys := newFakeSystem()
-	app, _, _ := makeInitIPSetsApp(sys)
-
-	h := newHelper(t)
-	dir := h.makeTempDir()
+func writeInitIPSetsConfig(h *testHelper, dir string) {
 	h.writeFile(dir, "config.yaml", `
 interface: wg0
 sets:
@@ -34,6 +29,15 @@ sets:
   ip_matrix: wg_allow_matrix
   port_matrix: wg_allow_matrix_ports
 `)
+}
+
+func TestInitIPSets_CreatesAllAccessSet(t *testing.T) {
+	sys := newFakeSystem()
+	app, _, _ := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeInitIPSetsConfig(h, dir)
 
 	gf := &globalFlags{configDir: dir}
 	code := cmdInitIPSets(gf, nil, app)
@@ -58,13 +62,7 @@ func TestInitIPSets_CreatesMatrixSet(t *testing.T) {
 
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	h.writeFile(dir, "config.yaml", `
-interface: wg0
-sets:
-  all: wg_allow_all
-  ip_matrix: wg_allow_matrix
-  port_matrix: wg_allow_matrix_ports
-`)
+	writeInitIPSetsConfig(h, dir)
 
 	gf := &globalFlags{configDir: dir}
 	code := cmdInitIPSets(gf, nil, app)
@@ -89,13 +87,7 @@ func TestInitIPSets_CreatesPortMatrixSet(t *testing.T) {
 
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	h.writeFile(dir, "config.yaml", `
-interface: wg0
-sets:
-  all: wg_allow_all
-  ip_matrix: wg_allow_matrix
-  port_matrix: wg_allow_matrix_ports
-`)
+	writeInitIPSetsConfig(h, dir)
 
 	gf := &globalFlags{configDir: dir}
 	code := cmdInitIPSets(gf, nil, app)
@@ -211,13 +203,7 @@ func TestInitIPSets_IdempotentViaFakeAdapter(t *testing.T) {
 
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	h.writeFile(dir, "config.yaml", `
-interface: wg0
-sets:
-  all: wg_allow_all
-  ip_matrix: wg_allow_matrix
-  port_matrix: wg_allow_matrix_ports
-`)
+	writeInitIPSetsConfig(h, dir)
 
 	gf := &globalFlags{configDir: dir}
 	for i := 0; i < 2; i++ {
@@ -235,13 +221,7 @@ func TestInitIPSets_PropagatesCreateError(t *testing.T) {
 
 	h := newHelper(t)
 	dir := h.makeTempDir()
-	h.writeFile(dir, "config.yaml", `
-interface: wg0
-sets:
-  all: wg_allow_all
-  ip_matrix: wg_allow_matrix
-  port_matrix: wg_allow_matrix_ports
-`)
+	writeInitIPSetsConfig(h, dir)
 
 	gf := &globalFlags{configDir: dir}
 	code := cmdInitIPSets(gf, nil, app)
@@ -250,6 +230,114 @@ sets:
 	}
 	if !strings.Contains(stderr.String(), "kernel error") {
 		t.Errorf("expected create error in stderr, got: %s", stderr.String())
+	}
+}
+
+func TestInitIPSets_FlushesManagedSets(t *testing.T) {
+	sys := newFakeSystem()
+	app, stdout, stderr := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeInitIPSetsConfig(h, dir)
+
+	code := cmdInitIPSets(&globalFlags{configDir: dir, initIPSetsFlush: true}, nil, app)
+	if code != 0 {
+		t.Fatalf("init-ipsets --flush exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	wantOps := []string{
+		"flush:wg_allow_all",
+		"flush:wg_allow_matrix",
+		"flush:wg_allow_matrix_ports",
+	}
+	if strings.Join(sys.appliedOps, "\n") != strings.Join(wantOps, "\n") {
+		t.Errorf("flush ops = %v, want %v", sys.appliedOps, wantOps)
+	}
+	if !strings.Contains(stdout.String(), "flushed") {
+		t.Errorf("expected flushed output, got: %s", stdout.String())
+	}
+}
+
+func TestInitIPSets_DestroyManagedSets(t *testing.T) {
+	sys := newFakeSystem()
+	app, _, stderr := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeInitIPSetsConfig(h, dir)
+
+	code := cmdInitIPSets(&globalFlags{configDir: dir, initIPSetsDestroy: true}, nil, app)
+	if code != 0 {
+		t.Fatalf("init-ipsets --destroy exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	wantOps := []string{
+		"destroy:wg_allow_all",
+		"destroy:wg_allow_matrix",
+		"destroy:wg_allow_matrix_ports",
+	}
+	if strings.Join(sys.appliedOps, "\n") != strings.Join(wantOps, "\n") {
+		t.Errorf("destroy ops = %v, want %v", sys.appliedOps, wantOps)
+	}
+}
+
+func TestInitIPSets_FlushThenDestroyManagedSets(t *testing.T) {
+	sys := newFakeSystem()
+	app, _, stderr := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeInitIPSetsConfig(h, dir)
+
+	code := cmdInitIPSets(&globalFlags{configDir: dir, initIPSetsFlush: true, initIPSetsDestroy: true}, nil, app)
+	if code != 0 {
+		t.Fatalf("init-ipsets --flush --destroy exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	wantOps := []string{
+		"flush:wg_allow_all",
+		"flush:wg_allow_matrix",
+		"flush:wg_allow_matrix_ports",
+		"destroy:wg_allow_all",
+		"destroy:wg_allow_matrix",
+		"destroy:wg_allow_matrix_ports",
+	}
+	if strings.Join(sys.appliedOps, "\n") != strings.Join(wantOps, "\n") {
+		t.Errorf("flush/destroy ops = %v, want %v", sys.appliedOps, wantOps)
+	}
+}
+
+func TestInitIPSets_FlushMissingSetsIsNonFatal(t *testing.T) {
+	sys := newFakeSystem()
+	sys.ipsetFlushErr = fmt.Errorf("Set cannot be found")
+	app, stdout, stderr := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeInitIPSetsConfig(h, dir)
+
+	code := cmdInitIPSets(&globalFlags{configDir: dir, initIPSetsFlush: true}, nil, app)
+	if code != 0 {
+		t.Fatalf("init-ipsets --flush missing sets exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "already absent") {
+		t.Errorf("expected already absent output, got: %s", stdout.String())
+	}
+}
+
+func TestInitIPSets_DestroyInUseSetFailsWithHint(t *testing.T) {
+	sys := newFakeSystem()
+	sys.ipsetDestroyErr = fmt.Errorf("Set cannot be destroyed: it is in use by a kernel component")
+	app, _, stderr := makeInitIPSetsApp(sys)
+
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeInitIPSetsConfig(h, dir)
+
+	code := cmdInitIPSets(&globalFlags{configDir: dir, initIPSetsDestroy: true}, nil, app)
+	if code == 0 {
+		t.Fatal("init-ipsets --destroy should fail when set is in use")
+	}
+	if !strings.Contains(stderr.String(), "wgman-firewall-hook down") {
+		t.Errorf("expected firewall hook hint, got: %s", stderr.String())
 	}
 }
 

@@ -27,6 +27,12 @@ type SystemAdapter interface {
 	// The creation is idempotent: it is equivalent to "ipset create ... -exist".
 	IPSetCreate(setname, setType string, withComment bool) error
 
+	// IPSetFlush removes all entries from an existing ipset.
+	IPSetFlush(setname string) error
+
+	// IPSetDestroy destroys an existing ipset.
+	IPSetDestroy(setname string) error
+
 	// IPSetAdd runs "ipset add <setname> <entry> [comment <comment>]".
 	IPSetAdd(setname, entry, comment string) error
 

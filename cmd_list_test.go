@@ -40,6 +40,71 @@ func TestRunList_NoFilterUserWithNoAccess(t *testing.T) {
 	}
 }
 
+func TestRunList_NoFilterShowsUserGroupsAndMergedAccess(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{"devs": {"alice", "bob"}}
+	db.Access["devs"] = []string{"mailvm"}
+
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "User Groups:") || !strings.Contains(out, "devs:") || !strings.Contains(out, "alice,bob") {
+		t.Errorf("expected user groups section, got:\n%s", out)
+	}
+	if !strings.Contains(out, "alice") || !strings.Contains(out, "(mailvm,sandbox)") {
+		t.Errorf("expected merged compact access for alice, got:\n%s", out)
+	}
+	if strings.Contains(out, "(devs)") {
+		t.Errorf("general list should not annotate inherited access, got:\n%s", out)
+	}
+}
+
+func TestRunList_FilterUserAnnotatesGroupOnlyAccess(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{
+		"devs": {"alice"},
+		"ops":  {"alice"},
+	}
+	db.Access["alice"] = []string{"sandbox"}
+	db.Access["devs"] = []string{"mailvm"}
+	db.Access["ops"] = []string{"mailvm"}
+
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "alice", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "mailvm (devs,ops)") {
+		t.Errorf("expected inherited mailvm annotation, got:\n%s", out)
+	}
+	if !strings.Contains(out, "\n  sandbox\n") {
+		t.Errorf("expected direct sandbox without annotation, got:\n%s", out)
+	}
+}
+
+func TestRunList_FilterUserGroupShowsDirectGroupAccess(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{"devs": {"alice"}}
+	db.Access["devs"] = []string{"mailvm"}
+
+	var buf strings.Builder
+	code := runList(db, &CheckResult{}, "devs", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "devs:") || !strings.Contains(out, "mailvm") {
+		t.Errorf("expected direct group access, got:\n%s", out)
+	}
+	if strings.Contains(out, "sandbox") {
+		t.Errorf("group filter should not include member direct access, got:\n%s", out)
+	}
+}
+
 func TestRunList_ShowsResources(t *testing.T) {
 	db := makeResourceDB()
 	var buf strings.Builder

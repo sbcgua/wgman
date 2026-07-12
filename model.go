@@ -15,10 +15,11 @@ type ConfigSets struct {
 
 // DB holds the contents of db.yaml.
 type DB struct {
-	Users     map[string]UserEntry     `yaml:"users"`
-	VMs       map[string]string        `yaml:"vms"`
-	Resources map[string]ResourceEntry `yaml:"resources"`
-	Access    map[string][]string      `yaml:"access"`
+	Users      map[string]UserEntry     `yaml:"users"`
+	UserGroups map[string][]string      `yaml:"user-groups"`
+	VMs        map[string]string        `yaml:"vms"`
+	Resources  map[string]ResourceEntry `yaml:"resources"`
+	Access     map[string][]string      `yaml:"access"`
 }
 
 // UserEntry is one entry in the users section of db.yaml.

@@ -95,6 +95,15 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	updated := cloneDB(db)
 	delete(updated.Users, user)
 	delete(updated.Access, user)
+	for group, members := range updated.UserGroups {
+		filtered := members[:0]
+		for _, member := range members {
+			if member != user {
+				filtered = append(filtered, member)
+			}
+		}
+		updated.UserGroups[group] = filtered
+	}
 	normalizeDBAccess(updated)
 	if errs := validateDB(updated); len(errs) > 0 {
 		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
@@ -104,7 +113,7 @@ func planRemoveUser(cfg *Config, db *DB, user string) (*removePlan, error) {
 	newExpected := computeExpectedIPSets(updated)
 	deltas := diffExpectedIPSets(cfg, oldExpected, newExpected)
 
-	access := append([]string(nil), db.Access[user]...)
+	access := effectiveAccessForUser(db, user)
 	sort.Strings(access)
 	return &removePlan{
 		UpdatedDB:   updated,

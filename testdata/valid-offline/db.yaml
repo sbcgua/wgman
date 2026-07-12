@@ -9,6 +9,8 @@ users:
     ip: 10.8.0.15
     pub: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=
 
+user-groups: {}
+
 vms:
   sandbox: 192.168.122.100
   mailvm: 192.168.122.101

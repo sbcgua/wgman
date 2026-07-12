@@ -451,6 +451,31 @@ func TestComputeExpectedIPSets_IncludesResourcePorts(t *testing.T) {
 	}
 }
 
+func TestComputeExpectedIPSets_IncludesUserGroupAccess(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{"devs": {"alice"}}
+	db.Access["devs"] = []string{"mailvm"}
+
+	expected := computeExpectedIPSets(db)
+	if expected.IPMatrix["10.8.0.10,192.168.122.101"] != "alice -> mailvm" {
+		t.Errorf("missing inherited alice->mailvm entry: %#v", expected.IPMatrix)
+	}
+}
+
+func TestComputeExpectedIPSets_UserGroupStarDominates(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{"admins": {"alice"}}
+	db.Access["admins"] = []string{"*"}
+
+	expected := computeExpectedIPSets(db)
+	if _, ok := expected.All["10.8.0.10"]; !ok {
+		t.Errorf("expected alice in all-access set: %#v", expected.All)
+	}
+	if _, ok := expected.IPMatrix["10.8.0.10,192.168.122.100"]; ok {
+		t.Errorf("star access should suppress alice matrix entry: %#v", expected.IPMatrix)
+	}
+}
+
 func TestComputeExpectedIPSets_ExcludesInactiveUsers(t *testing.T) {
 	db := makeInactiveBobDB()
 	expected := computeExpectedIPSets(db)

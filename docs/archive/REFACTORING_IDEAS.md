@@ -39,6 +39,35 @@ Add `output_test.go` with buffer-based tests for the shared print functions:
 Command tests should continue to cover where output is emitted; these focused
 tests would cover the exact rendering contracts independently.
 
+## 4. Move Command-Specific Flags Out Of The Global Parser
+
+The current CLI parser uses one shared global `flag.FlagSet` in two passes:
+
+1. parse flags before the command name;
+2. identify the command;
+3. parse flags after the command name with the same flag set.
+
+This keeps support for flags before and after the command, but it means every
+recognized flag must be registered up front. Command-specific flags such as
+`create -c`, `init-ipsets --flush`, and `init-ipsets --destroy` are therefore
+parsed as global-shaped flags and then rejected for unrelated commands.
+
+A cleaner future shape would be:
+
+- parse only true global flags before the command, such as `--config-dir`,
+  `--yes`, `--dry-run`, and `--no-color`;
+- identify the command;
+- parse command-specific flags with a dedicated `FlagSet` for that command;
+- keep `--flush` and `--destroy` local to `init-ipsets`;
+- eventually keep `-c` local to `create`/`add`.
+
+The main compatibility decision is whether command-specific flags should work
+before the command name. If they become truly local, prefer requiring forms
+like `wgman init-ipsets --flush` and rejecting `wgman --flush init-ipsets`.
+This makes help output and error behavior clearer, at the cost of a parser
+refactor and a small CLI compatibility break for any current pre-command use of
+command-specific flags.
+
 ## Guardrail
 
 Do not extract the repeated command preflight sequence yet. Root checks,
