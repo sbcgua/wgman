@@ -19,6 +19,19 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
+// sortedBoolKeys returns the keys of a bool-valued map sorted alphabetically.
+func sortedBoolKeys(values map[string]bool) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // endpointHost strips the port from a "host:port" endpoint string.
 // Returns "(none)" unchanged.
 func endpointHost(endpoint string) string {

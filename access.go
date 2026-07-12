@@ -1,7 +1,5 @@
 package main
 
-import "sort"
-
 // EffectiveAccessEntry is one merged access target for a user.
 // Groups contains sorted user group names that grant Target when the target is
 // not granted directly to the user.
@@ -75,16 +73,4 @@ func userGroupsForUser(db *DB, user string) []string {
 		}
 	}
 	return groups
-}
-
-func sortedBoolKeys(values map[string]bool) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }

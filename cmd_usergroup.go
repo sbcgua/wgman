@@ -83,17 +83,20 @@ func cmdUserGroup(gf *globalFlags, args []string, app *App) int {
 		return 0
 	}
 
-	if err := saveDBAtomic(gf.configDir, plan.UpdatedDB); err != nil {
-		fmt.Fprintln(app.Stderr, "error:", err)
-		return 1
-	}
-	if err := ApplyIPSetDeltas(plan.IPSetDeltas, app.Sys); err != nil {
+	if err := applyUserGroupPlan(gf.configDir, plan, app.Sys); err != nil {
 		fmt.Fprintln(app.Stderr, "error:", err)
 		return 1
 	}
 
 	fmt.Fprintf(app.Stdout, "usergroup: applied %d change(s)\n", changeCount)
 	return 0
+}
+
+func applyUserGroupPlan(configDir string, plan *userGroupPlan, sys SystemAdapter) error {
+	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
+		return err
+	}
+	return ApplyIPSetDeltas(plan.IPSetDeltas, sys)
 }
 
 func runUserGroupList(db *DB, group string, stdout, stderr io.Writer) int {

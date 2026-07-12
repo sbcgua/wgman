@@ -22,6 +22,21 @@ func TestSortedKeys(t *testing.T) {
 	}
 }
 
+func TestSortedBoolKeys(t *testing.T) {
+	got := sortedBoolKeys(map[string]bool{
+		"charlie": true,
+		"alice":   true,
+		"bob":     false,
+	})
+	want := []string{"alice", "bob", "charlie"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("sortedBoolKeys() = %#v, want %#v", got, want)
+	}
+	if got := sortedBoolKeys(nil); got != nil {
+		t.Errorf("sortedBoolKeys(nil) = %#v, want nil", got)
+	}
+}
+
 func TestIsValidIPv4OrCIDR(t *testing.T) {
 	tests := []struct {
 		input string
