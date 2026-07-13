@@ -153,12 +153,18 @@ At the end of each command clearly and concisely report the result.
 ## List
 
 `wgman list [filter]`
+`wgman list -r <resource-or-vm>`
 
 - calls the `check` internally for the state and config validation. If fails - return with errors same a `check`.
 - list users, their ips, and merged effective access summary in the form `(vm1,vm2)` or `(none)`
 - list user groups in compact form, VMs, and resources; each resource shows its referenced VM and ports
 - if filter is a user, output that user's merged effective access. Access inherited only from user groups is annotated with the sorted source group names, e.g. `mailvm (developers)` or `mailvm (devs,ops)`.
 - if filter is a user group, output direct configured access for that group only.
+- if `-r <resource-or-vm>` is provided, output users with effective access to that exact VM/resource target. The target must be an existing VM or resource name, except `*` is also accepted and lists all-access/admin users only. `-r` cannot be combined with the positional user/user-group filter.
+- VM/resource filters are exact access-target lookups in the shared VM/resource namespace. For example, `wgman list -r sandbox` lists users with effective `sandbox` or `*` access, but not users with only `ssh@sandbox`; `wgman list -r ssh@sandbox` lists users with effective `ssh@sandbox` or `*`, but not users with only full-VM `sandbox` access.
+- `list -r` includes inactive users, using the same `~` suffix and color behavior as the normal user list.
+- `list -r` does not list user groups as rows. If a user has access to the requested target only through user group membership, annotate the user with the sorted source group names, e.g. `alice (developers)` or `alice (devs,ops)`. Direct user access to the target, including direct `*`, suppresses the group annotation.
+- if a valid `-r` target has no matching users, print `(none)` and succeed.
 - when stdout is interactive, `none` access markers are grey and `*` access markers are red; `--no-color` suppresses this
 
 ## Show

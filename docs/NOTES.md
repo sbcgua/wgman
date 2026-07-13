@@ -163,6 +163,11 @@ future changes. They intentionally omit implementation history.
   user's effective access list; group-only inherited entries are annotated with
   source user group names. With a user group filter it prints direct user group
   access only.
+- `list -r <target>` is a list-local flag that prints users with effective
+  access to an exact VM/resource target, or `*` for all-access users only.
+  It includes inactive users, does not print user groups as rows, and annotates
+  users only when access to the requested target is inherited from user groups
+  with no direct user grant for that same target.
 - `list` colorizes access markers on interactive stdout: `none` uses grey and
   `*` uses red. `--no-color` suppresses this.
 - `show` prints a tabwriter table: `NAME IP ENDPOINT RX TX LAST HANDSHAKE`.

@@ -70,6 +70,9 @@ sudo wgman check
 sudo wgman list
 sudo wgman list alice
 sudo wgman list developers
+sudo wgman list -r sandbox
+sudo wgman list -r ssh@sandbox
+sudo wgman list -r '*'
 # Suppress interactive color output:
 sudo wgman list --no-color
 ```
@@ -91,6 +94,20 @@ VMs:
 Resources:
   ssh@sandbox          sandbox        tcp:22
 ```
+
+Resource/VM filtering lists users with effective access to that exact access
+target. All-access users are included. Group-only inherited access is annotated:
+
+```text
+sandbox:
+  admin
+  alice
+  bob (developers)
+```
+
+`wgman list -r sandbox` does not include users who only have access to
+`ssh@sandbox`; use `wgman list -r ssh@sandbox` for that port-limited resource.
+Inactive users are included with the same `~` suffix used elsewhere.
 
 **Show** WireGuard peer status with user names (as a friendlier version of `wg show`):
 

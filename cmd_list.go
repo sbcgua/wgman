@@ -9,6 +9,14 @@ import (
 
 // cmdList implements "wgman list [filter]".
 func cmdList(gf *globalFlags, args []string, app *App) int {
+	if gf.listResourceSet && len(args) > 0 {
+		fmt.Fprintln(app.Stderr, "error: list -r cannot be used with a user or user group filter")
+		return 2
+	}
+	if gf.listResourceSet && gf.listResource == "" {
+		fmt.Fprintln(app.Stderr, "error: list -r requires a resource or VM name")
+		return 2
+	}
 	if len(args) > 1 {
 		fmt.Fprintln(app.Stderr, "error: list takes at most one positional argument")
 		return 2
@@ -42,6 +50,9 @@ func cmdList(gf *globalFlags, args []string, app *App) int {
 	color := false
 	if !gf.noColor {
 		color = app.IsStdoutTTY()
+	}
+	if gf.listResourceSet {
+		return runListResourceWithColor(db, result, gf.listResource, app.Stdout, app.Stderr, color)
 	}
 	return runListWithColor(db, result, filter, app.Stdout, app.Stderr, color)
 }
@@ -114,6 +125,19 @@ func runListWithColor(db *DB, result *CheckResult, filter string, stdout, stderr
 
 	// fmt.Fprintln(stdout, "list: OK")
 	return 0
+}
+
+func runListResource(db *DB, result *CheckResult, resource string, stdout, stderr io.Writer) int {
+	return runListResourceWithColor(db, result, resource, stdout, stderr, false)
+}
+
+func runListResourceWithColor(db *DB, result *CheckResult, resource string, stdout, stderr io.Writer, color bool) int {
+	if !result.OK() {
+		printCheckErrors(result, stderr)
+		fmt.Fprintln(stderr, "list: FAILED")
+		return 1
+	}
+	return runListTargetUsers(db, resource, stdout, stderr, color)
 }
 
 func paddingFor(s string, width int) string {
@@ -266,8 +290,41 @@ func runListUserGroup(db *DB, group string, stdout io.Writer, color bool) int {
 	return 0
 }
 
+func runListTargetUsers(db *DB, target string, stdout, stderr io.Writer, color bool) int {
+	if target != "*" {
+		if _, ok := db.VMs[target]; !ok {
+			if _, ok := db.Resources[target]; !ok {
+				fmt.Fprintf(stderr, "error: resource or VM %q not found\n", target)
+				fmt.Fprintln(stderr, "list: FAILED")
+				return 1
+			}
+		}
+	}
+
+	fmt.Fprintf(stdout, "%s:\n", colorAccessItem(db, target, color))
+	entries := effectiveUsersForTarget(db, target)
+	if len(entries) == 0 {
+		fmt.Fprintf(stdout, "  (%s)\n", colorAccessItem(db, "none", color))
+		return 0
+	}
+	for _, entry := range entries {
+		fmt.Fprintf(stdout, "  %s\n", formatTargetUserEntry(db, entry, color))
+	}
+	return 0
+}
+
 func formatAccessEntryWithGroups(db *DB, entry EffectiveAccessEntry, color bool) string {
 	out := colorAccessItem(db, entry.Target, color)
+	if !entry.Direct && len(entry.Groups) > 0 {
+		out += " (" + strings.Join(entry.Groups, ",") + ")"
+	}
+	return out
+}
+
+func formatTargetUserEntry(db *DB, entry EffectiveTargetUserEntry, color bool) string {
+	user := db.Users[entry.User]
+	nameCell := showUserNameCell(entry.User, user.Inactive, color)
+	out := nameCell.display
 	if !entry.Direct && len(entry.Groups) > 0 {
 		out += " (" + strings.Join(entry.Groups, ",") + ")"
 	}

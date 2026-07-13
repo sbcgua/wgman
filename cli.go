@@ -15,7 +15,7 @@ Usage: wgman <command> [flags] [args...]
 
 Commands:
   check        Validate config/db and live WireGuard/ipset state
-  list [user]  List users, resources, and optional access for a user
+  list [user]  List users, resources, optional user access, or users for a resource with -r
   show         Show live WireGuard peers mapped to user names
   init-ipsets  Create, flush, or destroy the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
@@ -35,6 +35,9 @@ Global flags:
   --destroy           Destroy managed ipsets (init-ipsets only)
   --no-color          Disable colorized terminal output
 
+List flags:
+  -r <resource>       List users with access to a VM/resource, or "*" for all-access users
+
 Run 'wgman help' or 'wgman -h' for this message.
 `
 
@@ -46,6 +49,8 @@ type globalFlags struct {
 	noColor           bool
 	createComment     string
 	createCommentSet  bool
+	listResource      string
+	listResourceSet   bool
 	initIPSetsFlush   bool
 	initIPSetsDestroy bool
 }
@@ -60,6 +65,7 @@ type parsedCommand struct {
 type trackedStringFlag struct {
 	value *string
 	set   *bool
+	name  string
 }
 
 func (f trackedStringFlag) String() string {
@@ -71,7 +77,7 @@ func (f trackedStringFlag) String() string {
 
 func (f trackedStringFlag) Set(value string) error {
 	if *f.set {
-		return fmt.Errorf("-c specified more than once")
+		return fmt.Errorf("%s specified more than once", f.name)
 	}
 	*f.value = value
 	*f.set = true
@@ -84,6 +90,31 @@ func rejectUnsupportedDryRun(cmd string, gf *globalFlags, w io.Writer) bool {
 	}
 	fmt.Fprintf(w, "error: %s does not support --dry-run\n", cmd)
 	return true
+}
+
+func newGlobalFlagSet(name string, stderr io.Writer, gf *globalFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configDirDefault := gf.configDir
+	if configDirDefault == "" {
+		configDirDefault = defaultConfigDir
+	}
+	fs.StringVar(&gf.configDir, "config-dir", configDirDefault, "config directory")
+	fs.BoolVar(&gf.yes, "yes", gf.yes, "skip confirmation prompts")
+	fs.BoolVar(&gf.dryRun, "dry-run", gf.dryRun, "show planned changes without applying")
+	fs.BoolVar(&gf.initIPSetsFlush, "flush", gf.initIPSetsFlush, "flush managed ipsets")
+	fs.BoolVar(&gf.initIPSetsDestroy, "destroy", gf.initIPSetsDestroy, "destroy managed ipsets")
+	fs.BoolVar(&gf.noColor, "no-color", gf.noColor, "disable colorized terminal output")
+	fs.Var(trackedStringFlag{value: &gf.createComment, set: &gf.createCommentSet, name: "-c"}, "c", "create/add user comment")
+	return fs
+}
+
+func newCommandFlagSet(cmd string, stderr io.Writer, gf *globalFlags) *flag.FlagSet {
+	fs := newGlobalFlagSet("wgman "+cmd, stderr, gf)
+	if cmd == "list" {
+		fs.Var(trackedStringFlag{value: &gf.listResource, set: &gf.listResourceSet, name: "-r"}, "r", "list users with access to VM/resource")
+	}
+	return fs
 }
 
 // App holds all injectable dependencies for command handlers.
@@ -121,17 +152,8 @@ func parseCommandArgs(args []string, stderr io.Writer) (*parsedCommand, error) {
 		return &parsedCommand{help: true}, nil
 	}
 
-	// Build a single global FlagSet used for both passes.
-	fs := flag.NewFlagSet("wgman", flag.ContinueOnError)
-	fs.SetOutput(stderr)
 	gf := &globalFlags{}
-	fs.StringVar(&gf.configDir, "config-dir", defaultConfigDir, "config directory")
-	fs.BoolVar(&gf.yes, "yes", false, "skip confirmation prompts")
-	fs.BoolVar(&gf.dryRun, "dry-run", false, "show planned changes without applying")
-	fs.BoolVar(&gf.initIPSetsFlush, "flush", false, "flush managed ipsets")
-	fs.BoolVar(&gf.initIPSetsDestroy, "destroy", false, "destroy managed ipsets")
-	fs.BoolVar(&gf.noColor, "no-color", false, "disable colorized terminal output")
-	fs.Var(trackedStringFlag{value: &gf.createComment, set: &gf.createCommentSet}, "c", "create/add user comment")
+	fs := newGlobalFlagSet("wgman", stderr, gf)
 
 	// First pass: consume any flags that appear before the command name.
 	// fs.Parse stops at the first non-flag argument (the command).
@@ -150,14 +172,15 @@ func parseCommandArgs(args []string, stderr io.Writer) (*parsedCommand, error) {
 	cmd := remaining[0]
 
 	// Second pass: consume any flags that appear after the command name.
-	if err := fs.Parse(remaining[1:]); err != nil {
+	cmdFS := newCommandFlagSet(cmd, stderr, gf)
+	if err := cmdFS.Parse(remaining[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return &parsedCommand{help: true}, nil
 		}
 		return nil, err
 	}
 
-	cmdArgs := fs.Args() // positional args for the command
+	cmdArgs := cmdFS.Args() // positional args for the command
 	if gf.createCommentSet && cmd != "create" && cmd != "add" {
 		err := fmt.Errorf("-c is only supported by create/add")
 		fmt.Fprintln(stderr, "error:", err)
