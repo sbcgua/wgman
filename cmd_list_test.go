@@ -105,6 +105,169 @@ func TestRunList_FilterUserGroupShowsDirectGroupAccess(t *testing.T) {
 	}
 }
 
+func TestRunListResource_VMListsExactAndAllAccessUsers(t *testing.T) {
+	db := makeResourceDB()
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "sandbox", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "sandbox:") {
+		t.Errorf("expected sandbox header, got:\n%s", out)
+	}
+	for _, want := range []string{"  admin (*)\n", "  bob\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in resource filter output, got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "alice") {
+		t.Errorf("VM filter should not include resource-only user alice, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_ResourceListsExactAndAllAccessUsers(t *testing.T) {
+	db := makeResourceDB()
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "ssh@sandbox", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	for _, want := range []string{"ssh@sandbox:", "  admin (*)\n", "  alice\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in resource filter output, got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "bob") {
+		t.Errorf("resource filter should not include full-VM-only user bob, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_AnnotatesGroupOnlyAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Access["alice"] = nil
+	db.UserGroups = map[string][]string{
+		"devs": {"alice"},
+		"ops":  {"alice"},
+	}
+	db.Access["devs"] = []string{"sandbox"}
+	db.Access["ops"] = []string{"sandbox"}
+
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "sandbox", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "alice (devs,ops)") {
+		t.Errorf("expected group-only annotation, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_AnnotatesInheritedAllAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Access["admin"] = nil
+	db.Access["alice"] = nil
+	db.UserGroups = map[string][]string{"admins": {"alice"}}
+	db.Access["admins"] = []string{"*"}
+
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "sandbox", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "alice (*) (admins)") {
+		t.Errorf("expected all-access and group annotations, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_StarFilterListsOnlyAllAccessUsers(t *testing.T) {
+	db := makeTestDB()
+	db.Access["admin"] = nil
+	db.UserGroups = map[string][]string{"admins": {"alice"}}
+	db.Access["admins"] = []string{"*"}
+
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "*", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "*:") || !strings.Contains(out, "alice (admins)") {
+		t.Errorf("expected inherited all-access user, got:\n%s", out)
+	}
+	if strings.Contains(out, "(*)") {
+		t.Errorf("star filter should not add redundant all-access marker, got:\n%s", out)
+	}
+	if strings.Contains(out, "bob") {
+		t.Errorf("star filter should not include ordinary access user, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_ColorizesAllAccessMarker(t *testing.T) {
+	db := makeTestDB()
+	var buf strings.Builder
+	code := runListResourceWithColor(db, &CheckResult{}, "sandbox", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(buf.String(), "admin ("+ansiRed+"*"+ansiReset+")") {
+		t.Errorf("expected red all-access marker, got:\n%s", buf.String())
+	}
+	if !strings.Contains(stripANSI(buf.String()), "admin (*)") {
+		t.Errorf("plain output changed after stripping ANSI, got:\n%s", stripANSI(buf.String()))
+	}
+}
+
+func TestRunListResource_IncludesInactiveUsers(t *testing.T) {
+	db := makeTestDB()
+	bob := db.Users["bob"]
+	bob.Inactive = true
+	db.Users["bob"] = bob
+
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "mailvm", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(buf.String(), "bob~") {
+		t.Errorf("expected inactive suffix in resource filter output, got:\n%s", buf.String())
+	}
+}
+
+func TestRunListResource_NoMatchingUsersSucceeds(t *testing.T) {
+	db := makeTestDB()
+	db.Access["admin"] = nil
+	db.VMs["empty"] = "192.168.122.102"
+
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "empty", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "empty:") || !strings.Contains(out, "(none)") {
+		t.Errorf("expected none output for empty VM, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_UnknownTargetFails(t *testing.T) {
+	db := makeTestDB()
+	var stdout, stderr strings.Builder
+	code := runListResource(db, &CheckResult{}, "missing", &stdout, &stderr)
+	if code == 0 {
+		t.Fatal("expected non-zero code for unknown target")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected no stdout, got: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "resource or VM") || !strings.Contains(stderr.String(), "list: FAILED") {
+		t.Errorf("expected missing target failure, got: %s", stderr.String())
+	}
+}
+
 func TestRunList_ShowsResources(t *testing.T) {
 	db := makeResourceDB()
 	var buf strings.Builder

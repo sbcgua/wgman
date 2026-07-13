@@ -100,6 +100,30 @@ func TestParseCommandArgsAcceptsFlagsBeforeAndAfterCommand(t *testing.T) {
 	}
 }
 
+func TestParseCommandArgsListResourceFlagIsCommandLocal(t *testing.T) {
+	parsed, err := parseCommandArgs([]string{"list", "-r", "sandbox", "--no-color"}, io.Discard)
+	if err != nil {
+		t.Fatalf("parseCommandArgs() error = %v", err)
+	}
+	if parsed.name != "list" {
+		t.Fatalf("command name = %q, want list", parsed.name)
+	}
+	if !parsed.gf.listResourceSet || parsed.gf.listResource != "sandbox" {
+		t.Fatalf("list resource flag = (%v, %q), want (true, sandbox)", parsed.gf.listResourceSet, parsed.gf.listResource)
+	}
+	if !parsed.gf.noColor {
+		t.Fatal("expected --no-color to be parsed after list -r")
+	}
+	if len(parsed.args) != 0 {
+		t.Fatalf("command args = %#v, want none", parsed.args)
+	}
+
+	var stderr strings.Builder
+	if _, err := parseCommandArgs([]string{"-r", "sandbox", "list"}, &stderr); err == nil {
+		t.Fatal("expected pre-command -r to be rejected")
+	}
+}
+
 func TestRunApp_ShowNoColorSuppressesTTYColor(t *testing.T) {
 	h := newHelper(t)
 	dir := h.makeTempDir()
@@ -188,6 +212,25 @@ func TestRunApp_ListColorsInteractiveTTY(t *testing.T) {
 	}
 }
 
+func TestRunApp_ListResourceFilter(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	writeValidTestData(h, dir)
+
+	sys := buildCleanFakeSystem()
+	app, stdout, stderr := makeDeployApp(sys, "")
+	code := runApp([]string{"list", "--config-dir", dir, "-r", "sandbox"}, app)
+	if code != 0 {
+		t.Fatalf("list -r exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"sandbox:", "  admin (*)\n", "  alice\n", "  bob\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in list -r output, got:\n%s", want, out)
+		}
+	}
+}
+
 func TestRunApp_ArgumentErrorsExitTwo(t *testing.T) {
 	tests := []struct {
 		name string
@@ -197,6 +240,7 @@ func TestRunApp_ArgumentErrorsExitTwo(t *testing.T) {
 		{name: "check positional", args: []string{"check", "alice"}},
 		{name: "show positional", args: []string{"show", "alice"}},
 		{name: "list too many", args: []string{"list", "alice", "bob"}},
+		{name: "list resource and user", args: []string{"list", "-r", "sandbox", "alice"}},
 		{name: "init positional", args: []string{"init-ipsets", "extra"}},
 		{name: "deploy positional", args: []string{"deploy", "extra"}},
 		{name: "create dry-run", args: []string{"create", "--dry-run", "alice"}},

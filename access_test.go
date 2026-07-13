@@ -52,3 +52,57 @@ func TestEffectiveAccessEntriesForUserStarDominates(t *testing.T) {
 		t.Errorf("effective access = %#v, want %#v", got, want)
 	}
 }
+
+func TestEffectiveUsersForTargetIncludesStarAndExactAccess(t *testing.T) {
+	db := makeTestDB()
+	db.UserGroups = map[string][]string{
+		"admins": {"alice"},
+		"devs":   {"bob"},
+	}
+	db.Access["admins"] = []string{"*"}
+	db.Access["devs"] = []string{"sandbox"}
+
+	got := effectiveUsersForTarget(db, "sandbox")
+	want := []EffectiveTargetUserEntry{
+		{User: "admin", Direct: true, AllAccess: true},
+		{User: "alice", Direct: true, AllAccess: true},
+		{User: "bob", Direct: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("effective target users = %#v, want %#v", got, want)
+	}
+}
+
+func TestEffectiveUsersForTargetAnnotatesGroupOnlyAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Access["alice"] = nil
+	db.UserGroups = map[string][]string{
+		"admins": {"alice"},
+		"devs":   {"alice"},
+	}
+	db.Access["admins"] = []string{"*"}
+	db.Access["devs"] = []string{"sandbox"}
+
+	got := effectiveUsersForTarget(db, "sandbox")
+	want := []EffectiveTargetUserEntry{
+		{User: "admin", Direct: true, AllAccess: true},
+		{User: "alice", AllAccess: true, Groups: []string{"admins", "devs"}},
+		{User: "bob", Direct: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("effective target users = %#v, want %#v", got, want)
+	}
+}
+
+func TestEffectiveUsersForStarMatchesOnlyAllAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Access["admin"] = nil
+	db.UserGroups = map[string][]string{"admins": {"alice"}}
+	db.Access["admins"] = []string{"*"}
+
+	got := effectiveUsersForTarget(db, "*")
+	want := []EffectiveTargetUserEntry{{User: "alice", Groups: []string{"admins"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("effective target users = %#v, want %#v", got, want)
+	}
+}

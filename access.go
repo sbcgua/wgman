@@ -9,6 +9,16 @@ type EffectiveAccessEntry struct {
 	Groups []string
 }
 
+// EffectiveTargetUserEntry is one user whose effective access grants a target.
+// Groups contains sorted user group names when the target is granted only by
+// user group membership.
+type EffectiveTargetUserEntry struct {
+	User      string
+	Direct    bool
+	AllAccess bool
+	Groups    []string
+}
+
 func effectiveAccessForUser(db *DB, user string) []string {
 	entries := effectiveAccessEntriesForUser(db, user)
 	out := make([]string, 0, len(entries))
@@ -73,4 +83,51 @@ func userGroupsForUser(db *DB, user string) []string {
 		}
 	}
 	return groups
+}
+
+func effectiveUsersForTarget(db *DB, target string) []EffectiveTargetUserEntry {
+	users := sortedKeys(db.Users)
+	entries := make([]EffectiveTargetUserEntry, 0, len(users))
+	for _, user := range users {
+		direct := false
+		allAccess := false
+		for _, accessTarget := range db.Access[user] {
+			if accessTargetGrantsTarget(accessTarget, target) {
+				direct = true
+				if target != "*" && accessTarget == "*" {
+					allAccess = true
+				}
+				break
+			}
+		}
+
+		inherited := map[string]bool{}
+		for _, group := range userGroupsForUser(db, user) {
+			for _, accessTarget := range db.Access[group] {
+				if accessTargetGrantsTarget(accessTarget, target) {
+					inherited[group] = true
+					if target != "*" && accessTarget == "*" {
+						allAccess = true
+					}
+					break
+				}
+			}
+		}
+
+		if direct || len(inherited) > 0 {
+			entry := EffectiveTargetUserEntry{User: user, Direct: direct, AllAccess: allAccess}
+			if !entry.Direct {
+				entry.Groups = sortedBoolKeys(inherited)
+			}
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func accessTargetGrantsTarget(accessTarget, target string) bool {
+	if target == "*" {
+		return accessTarget == "*"
+	}
+	return accessTarget == "*" || accessTarget == target
 }
