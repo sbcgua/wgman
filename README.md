@@ -96,11 +96,12 @@ Resources:
 ```
 
 Resource/VM filtering lists users with effective access to that exact access
-target. All-access users are included. Group-only inherited access is annotated:
+target. All-access users are included with `(*)`, except when listing `-r '*'`.
+Group-only inherited access is annotated:
 
 ```text
 sandbox:
-  admin
+  admin (*)
   alice
   bob (developers)
 ```

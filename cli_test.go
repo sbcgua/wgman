@@ -224,7 +224,7 @@ func TestRunApp_ListResourceFilter(t *testing.T) {
 		t.Fatalf("list -r exit code = %d, want 0; stderr: %s", code, stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"sandbox:", "  admin\n", "  alice\n", "  bob\n"} {
+	for _, want := range []string{"sandbox:", "  admin (*)\n", "  alice\n", "  bob\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in list -r output, got:\n%s", want, out)
 		}

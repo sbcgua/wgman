@@ -116,7 +116,7 @@ func TestRunListResource_VMListsExactAndAllAccessUsers(t *testing.T) {
 	if !strings.Contains(out, "sandbox:") {
 		t.Errorf("expected sandbox header, got:\n%s", out)
 	}
-	for _, want := range []string{"  admin\n", "  bob\n"} {
+	for _, want := range []string{"  admin (*)\n", "  bob\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in resource filter output, got:\n%s", want, out)
 		}
@@ -134,7 +134,7 @@ func TestRunListResource_ResourceListsExactAndAllAccessUsers(t *testing.T) {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	out := buf.String()
-	for _, want := range []string{"ssh@sandbox:", "  admin\n", "  alice\n"} {
+	for _, want := range []string{"ssh@sandbox:", "  admin (*)\n", "  alice\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in resource filter output, got:\n%s", want, out)
 		}
@@ -165,6 +165,24 @@ func TestRunListResource_AnnotatesGroupOnlyAccess(t *testing.T) {
 	}
 }
 
+func TestRunListResource_AnnotatesInheritedAllAccess(t *testing.T) {
+	db := makeTestDB()
+	db.Access["admin"] = nil
+	db.Access["alice"] = nil
+	db.UserGroups = map[string][]string{"admins": {"alice"}}
+	db.Access["admins"] = []string{"*"}
+
+	var buf strings.Builder
+	code := runListResource(db, &CheckResult{}, "sandbox", &buf, io.Discard)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "alice (*) (admins)") {
+		t.Errorf("expected all-access and group annotations, got:\n%s", out)
+	}
+}
+
 func TestRunListResource_StarFilterListsOnlyAllAccessUsers(t *testing.T) {
 	db := makeTestDB()
 	db.Access["admin"] = nil
@@ -180,8 +198,26 @@ func TestRunListResource_StarFilterListsOnlyAllAccessUsers(t *testing.T) {
 	if !strings.Contains(out, "*:") || !strings.Contains(out, "alice (admins)") {
 		t.Errorf("expected inherited all-access user, got:\n%s", out)
 	}
+	if strings.Contains(out, "(*)") {
+		t.Errorf("star filter should not add redundant all-access marker, got:\n%s", out)
+	}
 	if strings.Contains(out, "bob") {
 		t.Errorf("star filter should not include ordinary access user, got:\n%s", out)
+	}
+}
+
+func TestRunListResource_ColorizesAllAccessMarker(t *testing.T) {
+	db := makeTestDB()
+	var buf strings.Builder
+	code := runListResourceWithColor(db, &CheckResult{}, "sandbox", &buf, io.Discard, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(buf.String(), "admin ("+ansiRed+"*"+ansiReset+")") {
+		t.Errorf("expected red all-access marker, got:\n%s", buf.String())
+	}
+	if !strings.Contains(stripANSI(buf.String()), "admin (*)") {
+		t.Errorf("plain output changed after stripping ANSI, got:\n%s", stripANSI(buf.String()))
 	}
 }
 

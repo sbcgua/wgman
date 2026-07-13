@@ -325,6 +325,9 @@ func formatTargetUserEntry(db *DB, entry EffectiveTargetUserEntry, color bool) s
 	user := db.Users[entry.User]
 	nameCell := showUserNameCell(entry.User, user.Inactive, color)
 	out := nameCell.display
+	if entry.AllAccess {
+		out += " (" + colorAccessItem(db, "*", color) + ")"
+	}
 	if !entry.Direct && len(entry.Groups) > 0 {
 		out += " (" + strings.Join(entry.Groups, ",") + ")"
 	}

@@ -64,8 +64,8 @@ func TestEffectiveUsersForTargetIncludesStarAndExactAccess(t *testing.T) {
 
 	got := effectiveUsersForTarget(db, "sandbox")
 	want := []EffectiveTargetUserEntry{
-		{User: "admin", Direct: true},
-		{User: "alice", Direct: true},
+		{User: "admin", Direct: true, AllAccess: true},
+		{User: "alice", Direct: true, AllAccess: true},
 		{User: "bob", Direct: true},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -85,8 +85,8 @@ func TestEffectiveUsersForTargetAnnotatesGroupOnlyAccess(t *testing.T) {
 
 	got := effectiveUsersForTarget(db, "sandbox")
 	want := []EffectiveTargetUserEntry{
-		{User: "admin", Direct: true},
-		{User: "alice", Groups: []string{"admins", "devs"}},
+		{User: "admin", Direct: true, AllAccess: true},
+		{User: "alice", AllAccess: true, Groups: []string{"admins", "devs"}},
 		{User: "bob", Direct: true},
 	}
 	if !reflect.DeepEqual(got, want) {
