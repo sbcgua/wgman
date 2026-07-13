@@ -1,0 +1,15 @@
+[package]
+name = "wgman-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+
+[[bin]]
+name = "wgman-rs"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+tempfile = "3.10"
