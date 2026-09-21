@@ -125,6 +125,23 @@ alice      10.8.0.10   145.80.12.11    1.35Mb    6.88Mb    6h5m24s
 bob~       10.8.0.15   -               -         -         -
 ```
 
+**Ping** configured VMs once to check whether they are accessible:
+
+```sh
+sudo wgman ping
+sudo wgman ping sandbox
+# Suppress interactive color output:
+sudo wgman ping --no-color
+```
+
+```text
+mailvm: UP
+sandbox: DOWN
+```
+
+`UP` is green and `DOWN` is red on an interactive terminal. A failed ping makes
+the command exit with status 1.
+
 **Create the managed ipsets** defined in `config.yaml`:
 
 ```sh

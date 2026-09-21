@@ -17,6 +17,7 @@ Commands:
   check        Validate config/db and live WireGuard/ipset state
   list [user]  List users, resources, optional user access, or users for a resource with -r
   show         Show live WireGuard peers mapped to user names
+  ping [vm]    Send one ping to each configured VM, or to one VM
   init-ipsets  Create, flush, or destroy the managed ipsets defined in config.yaml
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
   create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
@@ -221,6 +222,8 @@ func runApp(args []string, app *App) int {
 		return cmdList(parsed.gf, parsed.args, app)
 	case "show":
 		return cmdShow(parsed.gf, parsed.args, app)
+	case "ping":
+		return cmdPing(parsed.gf, parsed.args, app)
 	case "init-ipsets":
 		return cmdInitIPSets(parsed.gf, parsed.args, app)
 	case "deploy":

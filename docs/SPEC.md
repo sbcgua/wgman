@@ -421,3 +421,17 @@ See [PORT_LIMITED_ACCESS_IMPROVEMENT.md](./archive/PORT_LIMITED_ACCESS_IMPROVEME
 - See [USER-GROUPS.md](./archive/USER-GROUPS.md). Also integrated in the text above.
 - added `del` alias to `remove` command
 - added --flush and --destroy features to `init-ipsets`
+
+## Ping VM Reachability
+
+`wgman ping [vm]` sends one ICMP echo request to every VM configured in
+`db.yaml`, or only to the specified VM. It prints one line per checked VM in
+the form `<vm name>: UP` or `<vm name>: DOWN`; VM names are sorted when no VM
+is specified. `UP` and `DOWN` are colored green and red, respectively, only
+on interactive stdout and unless `--no-color` is set.
+
+An unknown VM is an error. A down VM is reported as `DOWN`, does not prevent
+other configured VMs from being checked, and causes exit status 1 after all
+requested VMs have been reported. The command uses the `ping -c 1` system
+command through `SystemAdapter` and does not require clean WireGuard or ipset
+state.
