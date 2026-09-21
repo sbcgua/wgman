@@ -110,14 +110,19 @@ future changes. They intentionally omit implementation history.
   owners. It emits `user-groups: {}` even when no user groups exist.
 - Access lists are normalized to sorted, duplicate-free lists before writing;
   principals with empty access are omitted from `access`.
-- Generated client configs are written as `<user>.vpn.conf` in the current
-  working directory, mode `0600`, and are never overwritten.
+- `create` writes client configs as `<user>.vpn.conf` in the current working
+  directory, mode `0600`, and never overwrites an existing file. `recreate`
+  atomically replaces that path to emit the rotated private key.
 - Generated client configs strip comment-only lines from `user.conf.template`
   and then remove leading blank lines left by stripped template headers.
 - `create` order: write client config, add WireGuard peer, apply ipset deltas,
   commit `db.yaml`. Failures trigger best-effort rollback.
 - `remove` order: apply ipset delete deltas, remove WireGuard peer, commit
   `db.yaml`. Failures trigger best-effort rollback.
+- `recreate` replaces an active user's peer by removing its old public key
+  before adding the new key, then commits `db.yaml`. On replacement or DB
+  failure it restores the old peer; inactive-user recreation updates only
+  `db.yaml` and the generated config.
 - `remove` does not delete existing generated client config files.
 - Access-only `mod` and membership-changing `usergroup` write `db.yaml` before
   applying ipset deltas; they refuse to run unless the pre-command state is
@@ -135,7 +140,7 @@ future changes. They intentionally omit implementation history.
 - `--no-color` is a global output flag. Color decisions go through `App`'s
   stdout TTY boundary, which delegates terminal detection to `SystemAdapter`;
   tests and non-TTY output default to plain text.
-- `create`, `mod`, and `usergroup` do not prompt after validation.
+- `create`, `recreate`, `mod`, and `usergroup` do not prompt after validation.
 - `add` is a CLI alias for `create`.
 - `del` is a CLI alias for `remove`.
 - `create`/`add` support `-c <comment>` for storing user metadata. The value

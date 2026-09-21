@@ -208,6 +208,17 @@ Internally, the "deploy" part must be coded as a routine, that applies changes t
 
 `create` command should have command line alias - `add`.
 
+## Recreate user
+
+`wgman recreate <name>`
+
+- calls `check` internally and refuses to run if it finds hard errors or drift
+- requires an existing user, generates a new private/public key pair, preserves the user's IP, access, comment, and inactive state, and replaces only the stored public key
+- writes a new `<user>.vpn.conf` in the current directory, overwriting a prior file when present
+- for active users, removes the old WireGuard peer before adding the replacement peer with the same IP; it restores the old peer if replacement or database persistence fails
+- inactive users receive a new client config and stored public key but remain absent from live WireGuard and managed ipsets
+- does not support `--dry-run` and does not prompt for confirmation
+
 ## Remove user
 
 `wgman remove <name>`
@@ -288,7 +299,7 @@ The following decisions were agreed during planning and should guide implementat
 
 - `db.yaml` must not store client private keys.
 - `create` generates the client private key and writes it only into the generated `<user>.vpn.conf` file in the current directory.
-- If the generated client config is lost, recovery is manual or the user must be recreated.
+- If the generated client config is lost, `recreate <user>` rotates its key and generates a replacement config.
 
 ### Create command parsing
 

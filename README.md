@@ -193,7 +193,7 @@ sudo wgman deploy --yes
 ```
 
 `--dry-run` is supported by `deploy`, `remove`, `mod`, and `usergroup`. It is
-rejected for commands such as `create` and `init-ipsets` so planned-change
+rejected for commands such as `create`, `recreate`, and `init-ipsets` so planned-change
 output is not confused with real changes.
 
 **Create a user** with an auto-assigned IP:
@@ -217,6 +217,17 @@ sudo wgman create alice 10.1.0.10 sandbox,mailvm
 ```
 
 Creating a user also saves the VPN config file for them to the current dir, based on the `user.conf.template` from the config directory (by default `/etc/wireguard/wgman`). [See example](./share/etc/wireguard/wgman/user.conf.template).
+
+**Rotate a user's WireGuard key and regenerate their config**:
+
+```sh
+sudo wgman recreate alice
+```
+
+`recreate` preserves the user's IP, access, comment, and inactive state while
+replacing their public key in `db.yaml`. It overwrites `alice.vpn.conf` in the
+current directory (or creates it if missing). Active users have the old peer
+removed before the replacement is added; inactive users remain inactive.
 
 **Create or modify access** to a port-limited resource:
 

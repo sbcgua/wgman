@@ -48,3 +48,20 @@ func TestWriteClientConfigNoOverwrite(t *testing.T) {
 		t.Errorf("client config content = %q, want first", string(data))
 	}
 }
+
+func TestWriteClientConfigOverwrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "alice.vpn.conf")
+	if err := os.WriteFile(path, []byte("old"), 0600); err != nil {
+		t.Fatalf("write initial config: %v", err)
+	}
+	if err := writeClientConfigOverwrite(path, "new"); err != nil {
+		t.Fatalf("writeClientConfigOverwrite: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read client config: %v", err)
+	}
+	if string(data) != "new" {
+		t.Errorf("client config content = %q, want new", string(data))
+	}
+}

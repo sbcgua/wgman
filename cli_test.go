@@ -45,7 +45,7 @@ func TestRunApp_HelpOutputSmoke(t *testing.T) {
 		t.Fatalf("help exit code = %d, want 0", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "Alias for create", "Alias for remove", "--dry-run", "--no-color"} {
+	for _, want := range []string{"Usage:", "Commands:", "deploy", "create <name>", "recreate", "Alias for create", "Alias for remove", "--dry-run", "--no-color"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q:\n%s", want, out)
 		}

@@ -22,6 +22,7 @@ Commands:
   deploy       Reconcile ipset state from db.yaml (supports --dry-run, --yes)
   create       Create a new VPN user: create <name> [-c comment] [ip] [res1,res2...]
   add          Alias for create
+  recreate     Rotate an existing user's WireGuard key and generate a new client config
   remove       Remove an existing VPN user: remove <name> (supports --dry-run, --yes)
   del          Alias for remove
   mod          Modify access or active state: mod <name> <+res1,-res2...|activate|deactivate> (supports --dry-run)
@@ -232,6 +233,8 @@ func runApp(args []string, app *App) int {
 		return cmdMod(parsed.gf, parsed.args, app)
 	case "create", "add":
 		return cmdCreate(parsed.gf, parsed.args, app)
+	case "recreate":
+		return cmdRecreate(parsed.gf, parsed.args, app)
 	case "remove", "del":
 		return cmdRemove(parsed.gf, parsed.args, app)
 	case "usergroup":
