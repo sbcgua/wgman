@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 var writeClientConfig = writeClientConfigNoOverwrite
+var writeRecreatedClientConfig = writeClientConfigOverwrite
 
 func renderClientConfig(templatePath, privateKey, clientIP, serverPublicKey string) (string, error) {
 	data, err := os.ReadFile(templatePath)
@@ -57,6 +59,32 @@ func writeClientConfigNoOverwrite(path, content string) error {
 	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", path, err)
+	}
+	return nil
+}
+
+func writeClientConfigOverwrite(path, content string) error {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary config for %s: %w", path, err)
+	}
+	tmpName := f.Name()
+	defer os.Remove(tmpName)
+
+	if err := f.Chmod(0600); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("chmod temporary config for %s: %w", path, err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", path, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return nil
 }
