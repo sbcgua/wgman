@@ -136,3 +136,11 @@ func (r *RealSystem) WGPubKey(privkey string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+func (r *RealSystem) Ping(host string) error {
+	out, err := exec.Command("ping", "-c", "1", host).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ping %s: %w: %s", host, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}

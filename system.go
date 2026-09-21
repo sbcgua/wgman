@@ -3,7 +3,7 @@ package main
 import "io"
 
 // SystemAdapter abstracts all external command execution and OS interactions.
-// Real implementations call wg, ipset, and ip commands.
+// Real implementations call wg, ipset, ip, and ping commands.
 // Fake implementations are used in tests.
 type SystemAdapter interface {
 	// IsRoot returns true when the process is running as root (uid 0).
@@ -50,4 +50,7 @@ type SystemAdapter interface {
 
 	// WGPubKey derives the public key from a private key string.
 	WGPubKey(privkey string) (string, error)
+
+	// Ping sends one ICMP echo request to host.
+	Ping(host string) error
 }

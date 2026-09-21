@@ -110,6 +110,8 @@ type fakeSystem struct {
 	ipsetDelErrs    map[string]error
 	wgSetErr        error
 	wgDelErr        error
+	pingErrs        map[string]error
+	pingedHosts     []string
 	appliedOps      []string // records IPSetCreate/Add/Del and WGSet/Del calls
 	genKeyResult    string
 	genKeyErr       error
@@ -122,6 +124,7 @@ func newFakeSystem() *fakeSystem {
 		isRoot:       true,
 		ipsetResults: make(map[string]string),
 		ipsetErrs:    make(map[string]error),
+		pingErrs:     make(map[string]error),
 	}
 }
 
@@ -228,6 +231,11 @@ func (f *fakeSystem) WGPubKey(_ string) (string, error) {
 		return f.pubKeyResult, nil
 	}
 	return "FAKE_PUBLIC_KEY", nil
+}
+
+func (f *fakeSystem) Ping(host string) error {
+	f.pingedHosts = append(f.pingedHosts, host)
+	return f.pingErrs[host]
 }
 
 // containsStr reports whether s contains substr.

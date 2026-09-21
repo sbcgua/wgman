@@ -41,6 +41,8 @@ future changes. They intentionally omit implementation history.
 - Real command execution lives in `system_real.go`; tests should use
   `fakeSystem` from `testhelpers_test.go`.
 - `exec.Command` is called with argument slices only.
+- `ping` calls `SystemAdapter.Ping`, which sends one `ping -c 1` request. Ping
+  failures are reported as per-VM `DOWN` statuses rather than command errors.
 - `InterfaceSubnet` uses Go's `net` package rather than shelling out.
 - Root checks belong in command handlers. Core routines such as `Check` remain
   root-agnostic and fakeable.
@@ -178,6 +180,10 @@ future changes. They intentionally omit implementation history.
   suffixes use dim cyan, zero-byte traffic (`0B`) uses grey, inactive
   usernames use grey, `never` uses grey, day/minute duration components use
   dim cyan, and hour/second components remain uncolored.
+- `ping [vm]` reads validated VM definitions from `db.yaml` without running
+  `Check`, so reachability reporting remains available when WireGuard or ipset
+  reconciliation has drift. It pings VM names in sorted order, returns status
+  1 if any ping is down, and colorizes only `UP`/`DOWN` on interactive stdout.
 
 ## Tests
 
