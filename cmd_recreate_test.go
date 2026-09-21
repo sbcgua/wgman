@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,13 @@ func TestPlanRecreateUserPreservesUserMetadata(t *testing.T) {
 	}
 	if strings.Join(plan.UpdatedDB.Access["alice"], ",") != "sandbox" {
 		t.Errorf("alice access = %v, want sandbox", plan.UpdatedDB.Access["alice"])
+	}
+	wantPeerDeltas := []WGPeerDeltaOp{
+		{User: "alice", PubKey: "ALICE_PUB=", AllowedIP: "10.8.0.10", Action: WGPeerRemove},
+		{User: "alice", PubKey: "ALICE_PUBLIC_NEW=", AllowedIP: "10.8.0.10", Action: WGPeerAdd},
+	}
+	if !reflect.DeepEqual(plan.PeerDeltas, wantPeerDeltas) {
+		t.Errorf("peer deltas = %+v, want %+v", plan.PeerDeltas, wantPeerDeltas)
 	}
 }
 

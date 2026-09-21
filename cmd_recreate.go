@@ -15,6 +15,7 @@ type recreatePlan struct {
 	PrivateKey string
 	PubKey     string
 	Inactive   bool
+	PeerDeltas []WGPeerDeltaOp
 }
 
 func cmdRecreate(gf *globalFlags, args []string, app *App) int {
@@ -111,6 +112,13 @@ func planRecreateUser(db *DB, user string, sys SystemAdapter) (*recreatePlan, er
 	if errs := validateDB(updated); len(errs) > 0 {
 		return nil, fmt.Errorf("updated db.yaml would be invalid: %s", strings.Join(errs, "; "))
 	}
+	var peerDeltas []WGPeerDeltaOp
+	if !entry.Inactive {
+		peerDeltas = []WGPeerDeltaOp{
+			{User: user, PubKey: entry.Pub, AllowedIP: entry.IP, Action: WGPeerRemove},
+			{User: user, PubKey: pubKey, AllowedIP: entry.IP, Action: WGPeerAdd},
+		}
+	}
 	return &recreatePlan{
 		UpdatedDB:  updated,
 		User:       user,
@@ -119,6 +127,7 @@ func planRecreateUser(db *DB, user string, sys SystemAdapter) (*recreatePlan, er
 		PrivateKey: privateKey,
 		PubKey:     pubKey,
 		Inactive:   entry.Inactive,
+		PeerDeltas: peerDeltas,
 	}, nil
 }
 
@@ -126,31 +135,12 @@ func applyRecreateUserPlan(configDir, iface string, plan *recreatePlan, sys Syst
 	if plan.Inactive {
 		return saveDBAtomic(configDir, plan.UpdatedDB), nil
 	}
-	if err := sys.WGDelPeer(iface, plan.OldPubKey); err != nil {
-		return fmt.Errorf("remove WireGuard peer for %q: %w", plan.User, err), nil
-	}
-	if err := sys.WGSetPeer(iface, plan.PubKey, plan.IP); err != nil {
-		return fmt.Errorf("add WireGuard peer for %q: %w", plan.User, err),
-			restoreRecreatedPeer(iface, plan, false, sys)
+	applied, err := ApplyPeerDeltasTracked(iface, plan.PeerDeltas, sys)
+	if err != nil {
+		return err, ApplyPeerDeltas(iface, InvertPeerDeltas(applied), sys)
 	}
 	if err := saveDBAtomic(configDir, plan.UpdatedDB); err != nil {
-		return err, restoreRecreatedPeer(iface, plan, true, sys)
+		return err, ApplyPeerDeltas(iface, InvertPeerDeltas(applied), sys)
 	}
 	return nil, nil
-}
-
-func restoreRecreatedPeer(iface string, plan *recreatePlan, removeNew bool, sys SystemAdapter) error {
-	var errs []string
-	if removeNew {
-		if err := sys.WGDelPeer(iface, plan.PubKey); err != nil {
-			errs = append(errs, fmt.Sprintf("remove replacement peer: %v", err))
-		}
-	}
-	if err := sys.WGSetPeer(iface, plan.OldPubKey, plan.IP); err != nil {
-		errs = append(errs, fmt.Sprintf("restore original peer: %v", err))
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("%s", strings.Join(errs, "; "))
-	}
-	return nil
 }
