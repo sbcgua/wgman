@@ -14,6 +14,7 @@ VM_IFACE="virbr0"
 SET_ALL="${SET_ALL:-}"                    # e.g. wg_allow_all
 SET_IP_MATRIX="${SET_IP_MATRIX:-}"        # e.g. wg_allow_ip_matrix
 SET_PORT_MATRIX="${SET_PORT_MATRIX:-}"    # e.g. wg_allow_port_matrix
+SET_ICMP_MATRIX="${SET_ICMP_MATRIX:-}"    # optional, e.g. wg_allow_icmp_matrix
 
 CHAIN_INP="WGMAN_INP"
 CHAIN_FWD="WGMAN_FWD"
@@ -59,6 +60,9 @@ load_wgman_config() {
         ;;
       sets.port_matrix)
         if [[ -z "$SET_PORT_MATRIX" ]]; then SET_PORT_MATRIX="$value"; fi
+        ;;
+      sets.icmp_matrix)
+        if [[ -z "$SET_ICMP_MATRIX" ]]; then SET_ICMP_MATRIX="$value"; fi
         ;;
     esac
   done < <(parse_wgman_config "$CONFIG_FILE")
@@ -108,6 +112,7 @@ parse_wgman_config() {
         if (key == "all") print "sets.all\t" value
         if (key == "ip_matrix") print "sets.ip_matrix\t" value
         if (key == "port_matrix") print "sets.port_matrix\t" value
+        if (key == "icmp_matrix") print "sets.icmp_matrix\t" value
       }
     }
   ' "$config_file"
@@ -167,6 +172,9 @@ require_ipsets() {
   fi
   if ! "$IPSET" list "$SET_PORT_MATRIX" >/dev/null 2>&1; then
     die "ipset $SET_PORT_MATRIX does not exist; run 'wgman init-ipsets' and 'wgman deploy' before enabling this hook"
+  fi
+  if [[ -n "$SET_ICMP_MATRIX" ]] && ! "$IPSET" list "$SET_ICMP_MATRIX" >/dev/null 2>&1; then
+    die "ipset $SET_ICMP_MATRIX does not exist; run 'wgman init-ipsets' and 'wgman deploy' before enabling this hook"
   fi
 }
 
@@ -241,7 +249,11 @@ install_owned_chains() {
   "$IPTABLES" -w -N "$CHAIN_FWD"
   "$IPTABLES" -w -A "$CHAIN_FWD" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p icmp -m set --match-set "$SET_ALL" src -j ACCEPT
-  "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p icmp -m set --match-set "$SET_IP_MATRIX" src,dst -j ACCEPT
+  if [[ -n "$SET_ICMP_MATRIX" ]]; then
+    "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p icmp --icmp-type echo-request -m set --match-set "$SET_ICMP_MATRIX" src,dst -j ACCEPT
+  else
+    "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p icmp -m set --match-set "$SET_IP_MATRIX" src,dst -j ACCEPT
+  fi
   "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p tcp -m conntrack --ctstate NEW -m set --match-set "$SET_ALL" src -j ACCEPT
   "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p tcp -m conntrack --ctstate NEW -m set --match-set "$SET_IP_MATRIX" src,dst -j ACCEPT
   "$IPTABLES" -w -A "$CHAIN_FWD" -o "$VM_IFACE" -p tcp -m conntrack --ctstate NEW -m set --match-set "$SET_PORT_MATRIX" src,dst,dst -j ACCEPT
@@ -281,6 +293,7 @@ action_print() {
   print_var SET_ALL
   print_var SET_IP_MATRIX
   print_var SET_PORT_MATRIX
+  print_var SET_ICMP_MATRIX
   print_var CHAIN_INP
   print_var CHAIN_FWD
 }

@@ -3,3 +3,4 @@ sets:
   all: wg_allow_all
   ip_matrix: wg_allow_matrix
   port_matrix: wg_allow_matrix_ports
+  icmp_matrix: wg_allow_matrix_icmp

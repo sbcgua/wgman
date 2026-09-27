@@ -20,6 +20,7 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
     all: wg_allow_all # the set that allows access to all resources
     ip_matrix: wg_allow_matrix # the net,net set, that maps client IP to VM ip
     port_matrix: wg_allow_matrix_ports # the ip,port,ip set, that maps client IP to VM service ports
+    icmp_matrix: wg_allow_matrix_icmp # optional net,net set with host pairs for pinging allowed VMs and resource hosts
 ```
 
 `db.yaml` - the database of users, user groups, VMs, port-limited resources, and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
@@ -29,6 +30,7 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
 - `vms` section - list of VM names and the corresponding ip addresses
 - `resources` section - optional list of named services. Each resource references a VM and one or more TCP/UDP ports. Unprefixed ports mean TCP. A resource may include optional `comment` metadata.
 - The `access` matrix declares VMs or resources accessible to a user or user group. VM entries are added to `sets.ip_matrix`; resource entries are added to `sets.port_matrix`. If the effective access entry = `*`, the user must be added to the `sets.all` (admin). Direct user access and all access from groups containing that user merge; `*` is dominant and suppresses redundant VM/resource entries.
+- If `sets.icmp_matrix` is non-empty, each active user with VM or resource access gets one entry per distinct user IP and underlying VM IP. The entry comment is `<username> -> <vmname> (ping)`. Multiple grants to the same VM produce one entry. Users with `*` access rely on `sets.all` and get no ICMP matrix entries. A missing or empty `sets.icmp_matrix` disables this flow.
 
 ```yaml
   users:
@@ -124,7 +126,7 @@ Global flags:
 - check all active file users (hashes) are in wg; if an active user's WireGuard peer is missing, report restorable drift that `deploy` can reconcile
 - inactive file users are expected to be absent from WireGuard and managed ipsets; if an inactive user's WireGuard peer or managed ipset entries are still present, report removable drift
 - read ip sets defined in `config.sets` - `ipset list <setname> -o save`
-- check `all`, `ip_matrix`, and `port_matrix`
+- check `all`, `ip_matrix`, and `port_matrix`, plus `icmp_matrix` when configured
 
 For the output of `wg` consult the tool man page. But the idea is that the `dump` command outputs the data in concise machine readable way, where first output line lists, in particular, server public key. And the follwoing lines output users information: publick key, ip, endpoint, traffic ...
 
@@ -202,7 +204,7 @@ This is a convenient representation of `wg show <interface>`, essentially with u
 - add to user to the `db.yaml`, add his accesses of they were given (otherwize no new access entries)
 - update system state (deploy)
   - `wg set <config.interface> peer <client-pulic-key> allowed-ips <client-ip>`
-  - add to corresponding ipsets, if relevant - `ipset add <set> <client-ip>` for admin (`*`) access, `ipset add <ip_matrix> <client-ip>,<vm-ip> comment <comment>` for full VM access, or `ipset add <port_matrix> <client-ip>,<protocol>:<port>,<vm-ip> comment <comment>` for resource access. VM comments use `<username> -> <vmname>`; resource comments use `<username> -> <resource> <protocol>/<port>`.
+  - add to corresponding ipsets, if relevant - `ipset add <set> <client-ip>` for admin (`*`) access, `ipset add <ip_matrix> <client-ip>,<vm-ip> comment <comment>` for full VM access, or `ipset add <port_matrix> <client-ip>,<protocol>:<port>,<vm-ip> comment <comment>` for resource access. With `icmp_matrix` configured, also add one `<client-ip>,<vm-ip>` entry for each distinct VM IP reachable through a VM or resource grant. VM comments use `<username> -> <vmname>`; resource comments use `<username> -> <resource> <protocol>/<port>`.
 
 Internally, the "deploy" part must be coded as a routine, that applies changes to the system state. It can be reused in `remove`, `mod` and `deploy` command.
 
@@ -290,7 +292,7 @@ The following decisions were agreed during planning and should guide implementat
 - `deploy` may run when the only detected problems are ipset drift or restorable WireGuard peer drift for known DB users. It must treat `db.yaml` as the intended access state and reconcile WireGuard peers and configured ipsets to it.
 - Internal `check` must prepare concrete ipset deltas so command logic can either report them or apply them.
 - Internal `check` must prepare concrete WireGuard peer add deltas for active users missing live and removal deltas for inactive users that still exist live.
-- The configured `sets.all`, `sets.ip_matrix`, and `sets.port_matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
+- The configured `sets.all`, `sets.ip_matrix`, `sets.port_matrix`, and optional `sets.icmp_matrix` are fully owned by `wgman`. Entries in these sets that are not represented by `db.yaml` are safe for `deploy` to delete. Manual firewall exceptions should use separate ipsets/rules.
 - Inactive users remain in `db.yaml` but are excluded from expected live WireGuard peers and managed ipsets.
 - Expected ipset state is computed from effective per-user access after expanding user groups.
 - `deploy` applies deltas only: add missing active-user WireGuard peers, add missing expected ipset entries, delete unexpected ipset entries, and remove inactive users' live WireGuard peers. It must not flush/rebuild whole ipsets unless a future explicit option is added.
@@ -320,30 +322,37 @@ The following decisions were agreed during planning and should guide implementat
 - Keep YAML for `config.yaml` and `db.yaml` because readability for manual admin edits is preferred.
 - A lightweight, actively maintained, safe YAML parser dependency is acceptable.
 - Do not store or support arbitrary YAML object tags. Only plain mappings, lists, strings, and scalar values are expected.
-- `config.yaml` requires `sets.all`, `sets.ip_matrix`, and `sets.port_matrix`. The old `sets.matrix` key is not accepted.
+- `config.yaml` requires `sets.all`, `sets.ip_matrix`, and `sets.port_matrix`. `sets.icmp_matrix` is optional; if set, its name must differ from the other managed sets. The old `sets.matrix` key is not accepted.
 
 ### Host and environment assumptions
 
 - Target Linux hosts with WireGuard tools, `iptables`, and `ipset` already installed.
 - `wgman` does not install packages.
-- `wgman` does not create firewall rules, create ipsets, or configure persistence across reboot in v1.
+- `wgman` does not create firewall rules or configure persistence across reboot. `init-ipsets` creates managed sets; `deploy` requires them to exist.
 - `check` verifies that the configured ipsets exist and reports clear errors if they do not.
-- `init-ipsets` creates all three managed sets: `hash:ip`, `hash:net,net`, and `hash:ip,port,ip`.
+- `init-ipsets` creates the three required managed sets and the optional `hash:net,net` ICMP set when configured. The deploy engine adds host addresses without CIDR prefixes, so each generated entry matches one user and one VM.
 
 ## Init ipsets
 
 `wgman init-ipsets [--flush] [--destroy]`
 
-- with no flags, creates all three managed sets using idempotent creation:
+- with no flags, creates the configured managed sets using idempotent creation:
   - `sets.all` as `hash:ip`
   - `sets.ip_matrix` as `hash:net,net`
   - `sets.port_matrix` as `hash:ip,port,ip`
-- with `--flush`, flushes all entries from the three managed sets.
-- with `--destroy`, destroys the three managed sets.
+  - optional `sets.icmp_matrix` as `hash:net,net`, with comments and host-only entries
+- with `--flush`, flushes all configured managed sets.
+- with `--destroy`, destroys all configured managed sets.
 - with `--flush --destroy`, flushes first, then destroys.
 - missing sets during `--flush` or `--destroy` are treated as already clean and do not fail the command.
 - destroy errors caused by sets still being referenced by firewall rules are errors; run the firewall hook `down` action before manual destroy.
 - this command loads `config.yaml` only and does not run the full `check`, so it can be used during WireGuard startup and teardown.
+
+### Firewall hook ICMP behavior
+
+- The optional firewall hook reads `sets.icmp_matrix` into `SET_ICMP_MATRIX`. If configured, `up` requires that set to exist and permits only ICMP echo requests matching its source/destination IP pairs. VM grants and resource grants both permit pinging the underlying VM IP.
+- With `sets.icmp_matrix` omitted or empty, the hook retains its existing IP-matrix ICMP rule. `SET_ALL` continues to permit admin users' ICMP traffic in both modes.
+- The hook's parent `FORWARD` jump matches traffic entering from WireGuard; the host's existing return-traffic policy must allow echo replies from VMs to VPN clients.
 
 ### Names
 

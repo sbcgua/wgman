@@ -172,6 +172,25 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 		}
 	}
 
+	// Optional ICMP matrix set.
+	if cfg.Sets.ICMPMatrix != "" {
+		icmpRaw, err := sys.IPSetList(cfg.Sets.ICMPMatrix)
+		if err != nil {
+			result.HardErrors = append(result.HardErrors,
+				fmt.Sprintf("ipset list %q: %s (run 'wgman init-ipsets' to create managed sets)", cfg.Sets.ICMPMatrix, err))
+		} else {
+			icmpParsed, err := ParseIPSet(icmpRaw)
+			if err != nil {
+				result.HardErrors = append(result.HardErrors,
+					fmt.Sprintf("parse ipset %q: %s", cfg.Sets.ICMPMatrix, err))
+			} else if errs := validateIPMatrixIPSet(cfg.Sets.ICMPMatrix, icmpParsed); len(errs) > 0 {
+				result.HardErrors = append(result.HardErrors, errs...)
+			} else {
+				reconcileIPSet(cfg.Sets.ICMPMatrix, expected.ICMPMatrix, icmpParsed.Entries, result)
+			}
+		}
+	}
+
 	sort.Strings(result.HardErrors)
 	sort.Strings(result.Drift)
 	sort.Slice(result.IPSetDeltas, func(i, j int) bool {
@@ -188,46 +207,6 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 	})
 
 	return result
-}
-
-// computeExpectedIPSets derives the desired ipset state from db.yaml.
-func computeExpectedIPSets(db *DB) ExpectedIPSets {
-	expected := ExpectedIPSets{
-		All:        make(map[string]string),
-		IPMatrix:   make(map[string]string),
-		PortMatrix: make(map[string]string),
-	}
-
-	for user, u := range db.Users {
-		vms := effectiveAccessForUser(db, user)
-		if u.Inactive {
-			continue
-		}
-		for _, vm := range vms {
-			if vm == "*" {
-				expected.All[u.IP] = ""
-				continue
-			}
-			if vmIP, ok := db.VMs[vm]; ok {
-				entry := u.IP + "," + vmIP
-				expected.IPMatrix[entry] = user + " -> " + vm
-				continue
-			}
-			resource, ok := db.Resources[vm]
-			if !ok {
-				continue
-			}
-			vmIP, ok := db.VMs[resource.VM]
-			if !ok {
-				continue
-			}
-			for _, port := range resource.Ports {
-				entry := u.IP + "," + port.String() + "," + vmIP
-				expected.PortMatrix[entry] = fmt.Sprintf("%s -> %s %s/%d", user, vm, port.Protocol, port.Port)
-			}
-		}
-	}
-	return expected
 }
 
 // reconcileIPSet computes drift and required deltas for one ipset.
