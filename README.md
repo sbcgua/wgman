@@ -175,7 +175,7 @@ sets:
   icmp_matrix: wg_allow_matrix_icmp
 ```
 
-`icmp_matrix` is optional; omitting it or leaving it empty keeps existing ping behavior. When enabled, `wgman` creates it as `hash:ip,ip` and fully reconciles one user-IP/VM-IP pair for each active user's effective VM or resource access. Multiple resources on one VM share a pair. `*` users continue to use the all-access set. To enable it on an existing host, add the setting, run `sudo wgman init-ipsets` and `sudo wgman deploy`, install the updated firewall hook template, then run `sudo wgman-firewall-hook up` to rebuild its rules.
+`icmp_matrix` is optional; omitting it or leaving it empty keeps existing ping behavior. When enabled, `wgman` creates it as `hash:net,net` and fully reconciles one exact user-IP/VM-IP host pair for each active user's effective VM or resource access. Multiple resources on one VM share a pair. `*` users continue to use the all-access set. To enable it on an existing host, add the setting, run `sudo wgman init-ipsets` and `sudo wgman deploy`, install the updated firewall hook template, then run `sudo wgman-firewall-hook up` to rebuild its rules.
 
 **Access rules deployment**. Preview access reconciliation:
 

@@ -55,11 +55,11 @@ func cmdInitIPSets(gf *globalFlags, args []string, app *App) int {
 	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:ip,port,ip)\n", cfg.Sets.PortMatrix)
 	if cfg.Sets.ICMPMatrix != "" {
 		// ICMP matrix set: exact source and destination IPv4 pairs.
-		if err := app.Sys.IPSetCreate(cfg.Sets.ICMPMatrix, "hash:ip,ip", true); err != nil {
+		if err := app.Sys.IPSetCreate(cfg.Sets.ICMPMatrix, "hash:net,net", true); err != nil {
 			fmt.Fprintln(app.Stderr, "error:", err)
 			return 1
 		}
-		fmt.Fprintf(app.Stdout, "ipset %q: created (hash:ip,ip)\n", cfg.Sets.ICMPMatrix)
+		fmt.Fprintf(app.Stdout, "ipset %q: created (hash:net,net)\n", cfg.Sets.ICMPMatrix)
 	}
 
 	fmt.Fprintln(app.Stdout, "init-ipsets: OK")

@@ -53,7 +53,7 @@ func TestICMPMatrixResourceAccessCreatesPair(t *testing.T) {
 
 func TestICMPMatrixCheckReconcilesMissingAndExtraEntries(t *testing.T) {
 	sys := buildResourceCleanFakeSystem()
-	sys.ipsetResults["wg_allow_matrix_icmp"] = "create wg_allow_matrix_icmp hash:ip,ip family inet comment\n" +
+	sys.ipsetResults["wg_allow_matrix_icmp"] = "create wg_allow_matrix_icmp hash:net,net family inet comment\n" +
 		"add wg_allow_matrix_icmp 10.8.0.99,192.168.122.100 comment \"stale\"\n"
 	result := Check(icmpTestCfg(), makeResourceDB(), sys)
 	if len(result.HardErrors) != 0 {
@@ -76,6 +76,22 @@ func TestICMPMatrixCheckReconcilesMissingAndExtraEntries(t *testing.T) {
 	}
 }
 
+func TestICMPMatrixDeployCanRemoveUnexpectedNetworkEntry(t *testing.T) {
+	sys := buildCleanFakeSystem()
+	sys.ipsetResults["wg_allow_matrix_icmp"] = "create wg_allow_matrix_icmp hash:net,net family inet comment\n" +
+		"add wg_allow_matrix_icmp 10.8.0.10,192.168.122.0/24 comment \"stale\"\n"
+	result := Check(icmpTestCfg(), makeTestDB(), sys)
+	if len(result.HardErrors) != 0 {
+		t.Fatalf("unexpected hard errors: %v", result.HardErrors)
+	}
+	for _, delta := range result.IPSetDeltas {
+		if delta.Set == "wg_allow_matrix_icmp" && delta.Entry == "10.8.0.10,192.168.122.0/24" && !delta.Add {
+			return
+		}
+	}
+	t.Errorf("unexpected broad entry was not marked for deletion: %#v", result.IPSetDeltas)
+}
+
 func TestICMPMatrixCheckRejectsMissingOrInvalidSet(t *testing.T) {
 	for _, tc := range []struct {
 		name, output string
@@ -83,8 +99,8 @@ func TestICMPMatrixCheckRejectsMissingOrInvalidSet(t *testing.T) {
 		want         string
 	}{
 		{name: "missing", err: fmt.Errorf("set does not exist"), want: "init-ipsets"},
-		{name: "wrong type", output: "create wg_allow_matrix_icmp hash:net,net family inet comment\n", want: "expected hash:ip,ip"},
-		{name: "malformed entry", output: "create wg_allow_matrix_icmp hash:ip,ip family inet comment\nadd wg_allow_matrix_icmp 10.8.0.10,not-an-ip\n", want: "must use IPv4"},
+		{name: "wrong type", output: "create wg_allow_matrix_icmp hash:ip,port family inet comment\n", want: "expected hash:net,net"},
+		{name: "malformed entry", output: "create wg_allow_matrix_icmp hash:net,net family inet comment\nadd wg_allow_matrix_icmp 10.8.0.10,not-an-ip\n", want: "valid IPv4/net values"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sys := buildCleanFakeSystem()
@@ -110,7 +126,7 @@ func TestICMPMatrixInitAndLifecycle(t *testing.T) {
 		flags globalFlags
 		want  string
 	}{
-		{name: "create", flags: globalFlags{}, want: "create:ping_set:hash:ip,ip:comment"},
+		{name: "create", flags: globalFlags{}, want: "create:ping_set:hash:net,net:comment"},
 		{name: "flush", flags: globalFlags{initIPSetsFlush: true}, want: "flush:ping_set"},
 		{name: "destroy", flags: globalFlags{initIPSetsDestroy: true}, want: "destroy:ping_set"},
 	} {
@@ -147,7 +163,7 @@ func TestICMPMatrixDeployAppliesComputedPairs(t *testing.T) {
 	writeValidTestData(h, dir)
 	h.writeFile(dir, "config.yaml", "interface: wg0\nsets:\n  all: wg_allow_all\n  ip_matrix: wg_allow_matrix\n  port_matrix: wg_allow_matrix_ports\n  icmp_matrix: wg_allow_matrix_icmp\n")
 	sys := buildCleanFakeSystem()
-	sys.ipsetResults["wg_allow_matrix_icmp"] = "create wg_allow_matrix_icmp hash:ip,ip family inet comment\n"
+	sys.ipsetResults["wg_allow_matrix_icmp"] = "create wg_allow_matrix_icmp hash:net,net family inet comment\n"
 	app, _, stderr := makeDeployApp(sys, "")
 	if code := cmdDeploy(&globalFlags{configDir: dir, yes: true}, nil, app); code != 0 {
 		t.Fatalf("deploy exit = %d: %s", code, stderr.String())

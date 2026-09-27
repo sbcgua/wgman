@@ -183,7 +183,7 @@ func Check(cfg *Config, db *DB, sys SystemAdapter) *CheckResult {
 			if err != nil {
 				result.HardErrors = append(result.HardErrors,
 					fmt.Sprintf("parse ipset %q: %s", cfg.Sets.ICMPMatrix, err))
-			} else if errs := validateICMPMatrixIPSet(cfg.Sets.ICMPMatrix, icmpParsed); len(errs) > 0 {
+			} else if errs := validateIPMatrixIPSet(cfg.Sets.ICMPMatrix, icmpParsed); len(errs) > 0 {
 				result.HardErrors = append(result.HardErrors, errs...)
 			} else {
 				reconcileIPSet(cfg.Sets.ICMPMatrix, expected.ICMPMatrix, icmpParsed.Entries, result)
@@ -332,29 +332,6 @@ func validatePortMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
 		if _, err := parseResourcePortScalar(parts[1]); err != nil {
 			errs = append(errs, fmt.Sprintf(
 				"ipset %q: port matrix entry %q has invalid port: %s", setname, e.Entry, err))
-		}
-	}
-	return errs
-}
-
-// validateICMPMatrixIPSet requires exact IPv4 source and destination pairs.
-func validateICMPMatrixIPSet(setname string, parsed *ParsedIPSet) []string {
-	var errs []string
-	if parsed.SetName != setname {
-		return []string{fmt.Sprintf("ipset %q output describes set %q, expected %q", setname, parsed.SetName, setname)}
-	}
-	if parsed.SetType != "hash:ip,ip" {
-		return []string{fmt.Sprintf("ipset %q has type %q, expected hash:ip,ip (run 'wgman init-ipsets' to recreate)", setname, parsed.SetType)}
-	}
-	for _, e := range parsed.Entries {
-		parts := strings.Split(e.Entry, ",")
-		if len(parts) != 2 {
-			errs = append(errs, fmt.Sprintf("ipset %q: ICMP matrix entry %q is not source-ip,destination-ip", setname, e.Entry))
-			continue
-		}
-		src, dst := net.ParseIP(parts[0]), net.ParseIP(parts[1])
-		if src == nil || src.To4() == nil || dst == nil || dst.To4() == nil {
-			errs = append(errs, fmt.Sprintf("ipset %q: ICMP matrix entry %q must use IPv4 source and destination addresses", setname, e.Entry))
 		}
 	}
 	return errs

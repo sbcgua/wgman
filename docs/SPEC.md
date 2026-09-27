@@ -20,7 +20,7 @@ Configuration files are supposed to live in `/etc/wireguard/wgman`. There are 3 
     all: wg_allow_all # the set that allows access to all resources
     ip_matrix: wg_allow_matrix # the net,net set, that maps client IP to VM ip
     port_matrix: wg_allow_matrix_ports # the ip,port,ip set, that maps client IP to VM service ports
-    icmp_matrix: wg_allow_matrix_icmp # optional ip,ip set for pinging allowed VMs and resource hosts
+    icmp_matrix: wg_allow_matrix_icmp # optional net,net set with host pairs for pinging allowed VMs and resource hosts
 ```
 
 `db.yaml` - the database of users, user groups, VMs, port-limited resources, and access matrix. This file will be modified by the `wgman` and may also be modified manually by admin.
@@ -330,7 +330,7 @@ The following decisions were agreed during planning and should guide implementat
 - `wgman` does not install packages.
 - `wgman` does not create firewall rules or configure persistence across reboot. `init-ipsets` creates managed sets; `deploy` requires them to exist.
 - `check` verifies that the configured ipsets exist and reports clear errors if they do not.
-- `init-ipsets` creates the three required managed sets and the optional `hash:ip,ip` ICMP set when configured.
+- `init-ipsets` creates the three required managed sets and the optional `hash:net,net` ICMP set when configured. The deploy engine adds host addresses without CIDR prefixes, so each generated entry matches one user and one VM.
 
 ## Init ipsets
 
@@ -340,7 +340,7 @@ The following decisions were agreed during planning and should guide implementat
   - `sets.all` as `hash:ip`
   - `sets.ip_matrix` as `hash:net,net`
   - `sets.port_matrix` as `hash:ip,port,ip`
-  - optional `sets.icmp_matrix` as `hash:ip,ip`, with comments
+  - optional `sets.icmp_matrix` as `hash:net,net`, with comments and host-only entries
 - with `--flush`, flushes all configured managed sets.
 - with `--destroy`, destroys all configured managed sets.
 - with `--flush --destroy`, flushes first, then destroys.
