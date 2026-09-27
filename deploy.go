@@ -57,6 +57,9 @@ func diffExpectedIPSets(cfg *Config, oldExpected, newExpected ExpectedIPSets) []
 	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.All, oldExpected.All, newExpected.All)...)
 	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.IPMatrix, oldExpected.IPMatrix, newExpected.IPMatrix)...)
 	deltas = append(deltas, diffExpectedIPSet(cfg.Sets.PortMatrix, oldExpected.PortMatrix, newExpected.PortMatrix)...)
+	if cfg.Sets.ICMPMatrix != "" {
+		deltas = append(deltas, diffExpectedIPSet(cfg.Sets.ICMPMatrix, oldExpected.ICMPMatrix, newExpected.ICMPMatrix)...)
+	}
 	sort.Slice(deltas, func(i, j int) bool {
 		if deltas[i].Set != deltas[j].Set {
 			return deltas[i].Set < deltas[j].Set
@@ -67,6 +70,54 @@ func diffExpectedIPSets(cfg *Config, oldExpected, newExpected ExpectedIPSets) []
 		return !deltas[i].Add && deltas[j].Add
 	})
 	return deltas
+}
+
+// computeExpectedIPSets derives desired managed-set entries from effective
+// access. The optional ICMP matrix is reconciled only when configured.
+func computeExpectedIPSets(db *DB) ExpectedIPSets {
+	expected := ExpectedIPSets{
+		All:        make(map[string]string),
+		IPMatrix:   make(map[string]string),
+		PortMatrix: make(map[string]string),
+		ICMPMatrix: make(map[string]string),
+	}
+
+	for user, u := range db.Users {
+		if u.Inactive {
+			continue
+		}
+		for _, target := range effectiveAccessForUser(db, user) {
+			if target == "*" {
+				expected.All[u.IP] = ""
+				continue
+			}
+			if vmIP, ok := db.VMs[target]; ok {
+				entry := u.IP + "," + vmIP
+				expected.IPMatrix[entry] = user + " -> " + target
+				if _, exists := expected.ICMPMatrix[entry]; !exists {
+					expected.ICMPMatrix[entry] = user + " -> " + target + " (ping)"
+				}
+				continue
+			}
+			resource, ok := db.Resources[target]
+			if !ok {
+				continue
+			}
+			vmIP, ok := db.VMs[resource.VM]
+			if !ok {
+				continue
+			}
+			icmpEntry := u.IP + "," + vmIP
+			if _, exists := expected.ICMPMatrix[icmpEntry]; !exists {
+				expected.ICMPMatrix[icmpEntry] = user + " -> " + resource.VM + " (ping)"
+			}
+			for _, port := range resource.Ports {
+				entry := u.IP + "," + port.String() + "," + vmIP
+				expected.PortMatrix[entry] = fmt.Sprintf("%s -> %s %s/%d", user, target, port.Protocol, port.Port)
+			}
+		}
+	}
+	return expected
 }
 
 func diffExpectedIPSet(setname string, oldExpected, newExpected map[string]string) []IpsetDeltaOp {

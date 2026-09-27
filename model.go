@@ -11,6 +11,7 @@ type ConfigSets struct {
 	All        string `yaml:"all"`
 	IPMatrix   string `yaml:"ip_matrix"`
 	PortMatrix string `yaml:"port_matrix"`
+	ICMPMatrix string `yaml:"icmp_matrix"`
 }
 
 // DB holds the contents of db.yaml.
@@ -51,6 +52,7 @@ type ExpectedIPSets struct {
 	All        map[string]string
 	IPMatrix   map[string]string
 	PortMatrix map[string]string
+	ICMPMatrix map[string]string
 }
 
 // IpsetDeltaOp describes one add or delete operation on an ipset.

@@ -78,6 +78,9 @@ future changes. They intentionally omit implementation history.
 - Expected ipset state is computed from effective per-user access: direct user
   access plus access from all user groups containing that user. If effective
   access includes `"*"`, lower-level VM/resource entries are suppressed.
+- `deploy.go` computes unique user-IP/VM-IP pairs for the optional ICMP set
+  from both VM and resource grants. `check` and access-changing commands use
+  that shared expected state; an unset ICMP set name skips live reconciliation.
 - Missing configured ipsets are hard errors and should suggest
   `wgman init-ipsets`.
 - `CheckResult.HardErrors`, `Drift`, `IPSetDeltas`, and `PeerDeltas` are

@@ -164,7 +164,7 @@ sudo wgman init-ipsets --destroy
 `--flush --destroy` flushes first, then destroys. Missing sets during flush or
 destroy are treated as already-clean state.
 
-The config must define all three managed sets:
+The config must define the first three managed sets. Add `icmp_matrix` to let users ping VMs behind their VM or resource grants:
 
 ```yaml
 interface: wg0
@@ -172,7 +172,10 @@ sets:
   all: wg_allow_all
   ip_matrix: wg_allow_matrix
   port_matrix: wg_allow_matrix_ports
+  icmp_matrix: wg_allow_matrix_icmp
 ```
+
+`icmp_matrix` is optional; omitting it or leaving it empty keeps existing ping behavior. When enabled, `wgman` creates it as `hash:ip,ip` and fully reconciles one user-IP/VM-IP pair for each active user's effective VM or resource access. Multiple resources on one VM share a pair. `*` users continue to use the all-access set. To enable it on an existing host, add the setting, run `sudo wgman init-ipsets` and `sudo wgman deploy`, install the updated firewall hook template, then run `sudo wgman-firewall-hook up` to rebuild its rules.
 
 **Access rules deployment**. Preview access reconciliation:
 
@@ -373,7 +376,7 @@ Review and edit the variables at the top of the template before installing it, e
 - `WG_IFACE`, if you want to override the interface from `config.yaml`
 - `VM_IFACE`; use an `iptables` interface wildcard such as `virbr+` if the
   same rules should apply to several VM bridges like `virbr0` and `virbr1`
-- `SET_ALL`, `SET_IP_MATRIX`, and `SET_PORT_MATRIX`, if you want to override the managed set names from `config.yaml`
+- `SET_ALL`, `SET_IP_MATRIX`, `SET_PORT_MATRIX`, and optional `SET_ICMP_MATRIX`, if you want to override the managed set names from `config.yaml`
 - `CHAIN_INP` and `CHAIN_FWD`
 
 Install it manually after review:
@@ -397,7 +400,7 @@ PostUp = /usr/local/sbin/wgman init-ipsets && /usr/local/sbin/wgman-firewall-hoo
 PreDown = /usr/local/sbin/wgman init-ipsets --flush && /usr/local/sbin/wgman-firewall-hook down
 ```
 
-The script manages only its dedicated `iptables` chains and parent jump rules. It allows full-VM TCP/ICMP forwarding through the IP matrix set, and TCP/UDP service forwarding through the port matrix set. Resource entries do not grant ICMP. It does not create ipsets, populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
+The script manages only its dedicated `iptables` chains and parent jump rules. With `icmp_matrix` configured, it allows ICMP echo requests to the VM IPs behind a user's VM and resource grants; TCP full-VM access still uses the IP matrix, and TCP/UDP service access still uses the port matrix. Without `icmp_matrix`, it keeps the existing IP-matrix ICMP rule, so resource-only grants cannot ping. Admin users in `SET_ALL` retain full ICMP access. The host's existing `FORWARD` policy must permit echo replies back to VPN clients, as it does for other return traffic. The script does not create or populate ipsets, install packages, or configure firewall persistence. Unmatched packets return to the host's existing `INPUT` or `FORWARD` policy. Limited-user host services such as DNS are not enabled by default. The `up` action rebuilds the owned chains, `down` removes them, and `reassert` moves the existing parent jump rules back to the top if another tool inserts higher-priority rules later:
 
 ```sh
 sudo /usr/local/sbin/wgman-firewall-hook reassert

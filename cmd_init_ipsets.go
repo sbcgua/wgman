@@ -53,6 +53,14 @@ func cmdInitIPSets(gf *globalFlags, args []string, app *App) int {
 		return 1
 	}
 	fmt.Fprintf(app.Stdout, "ipset %q: created (hash:ip,port,ip)\n", cfg.Sets.PortMatrix)
+	if cfg.Sets.ICMPMatrix != "" {
+		// ICMP matrix set: exact source and destination IPv4 pairs.
+		if err := app.Sys.IPSetCreate(cfg.Sets.ICMPMatrix, "hash:ip,ip", true); err != nil {
+			fmt.Fprintln(app.Stderr, "error:", err)
+			return 1
+		}
+		fmt.Fprintf(app.Stdout, "ipset %q: created (hash:ip,ip)\n", cfg.Sets.ICMPMatrix)
+	}
 
 	fmt.Fprintln(app.Stdout, "init-ipsets: OK")
 	return 0
@@ -94,7 +102,11 @@ func runIPSetLifecycle(cfg *Config, gf *globalFlags, app *App) int {
 }
 
 func managedIPSetNames(cfg *Config) []string {
-	return []string{cfg.Sets.All, cfg.Sets.IPMatrix, cfg.Sets.PortMatrix}
+	names := []string{cfg.Sets.All, cfg.Sets.IPMatrix, cfg.Sets.PortMatrix}
+	if cfg.Sets.ICMPMatrix != "" {
+		names = append(names, cfg.Sets.ICMPMatrix)
+	}
+	return names
 }
 
 func isMissingIPSetError(err error) bool {

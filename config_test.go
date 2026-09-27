@@ -38,6 +38,34 @@ func TestLoadConfig_FromTestdata(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_OptionalICMPMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name, value, want string
+	}{
+		{name: "configured", value: "wg_allow_matrix_icmp", want: "wg_allow_matrix_icmp"},
+		{name: "empty", value: "", want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHelper(t)
+			dir := h.makeTempDir()
+			h.writeFile(dir, "config.yaml", "interface: wg0\nsets:\n  all: a\n  ip_matrix: b\n  port_matrix: c\n  icmp_matrix: "+tc.value+"\n")
+			cfg, err := LoadConfig(dir)
+			h.assertNoError(err)
+			if cfg.Sets.ICMPMatrix != tc.want {
+				t.Errorf("sets.icmp_matrix = %q, want %q", cfg.Sets.ICMPMatrix, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_RejectsICMPMatrixNameCollision(t *testing.T) {
+	h := newHelper(t)
+	dir := h.makeTempDir()
+	h.writeFile(dir, "config.yaml", "interface: wg0\nsets:\n  all: a\n  ip_matrix: b\n  port_matrix: c\n  icmp_matrix: b\n")
+	_, err := LoadConfig(dir)
+	h.assertError(err, "sets.icmp_matrix must have a distinct set name")
+}
+
 var configRequiredFieldTests = []struct {
 	name    string
 	yaml    string

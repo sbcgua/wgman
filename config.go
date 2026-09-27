@@ -44,5 +44,12 @@ func validateConfig(cfg *Config) error {
 	if cfg.Sets.PortMatrix == "" {
 		return fmt.Errorf("config.yaml: sets.port_matrix is required")
 	}
+	if cfg.Sets.ICMPMatrix != "" {
+		for _, name := range []string{cfg.Sets.All, cfg.Sets.IPMatrix, cfg.Sets.PortMatrix} {
+			if cfg.Sets.ICMPMatrix == name {
+				return fmt.Errorf("config.yaml: sets.icmp_matrix must have a distinct set name")
+			}
+		}
+	}
 	return nil
 }
