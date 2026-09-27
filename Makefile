@@ -12,7 +12,7 @@ CONFIG_SRC_DIR := share/etc/wireguard/wgman
 all: build
 
 build:
-	$(GO) build -trimpath -ldflags="-s -w" -o $(BINARY) .
+	$(GO) build -trimpath -ldflags="-s -w" -o $(BINARY) ./src/wgman
 
 test:
 	$(GO) test ./...
