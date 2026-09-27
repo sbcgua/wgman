@@ -311,6 +311,9 @@ go mod tidy
 
 ## Build
 
+The Go command and its tests live in `src/wgman/`. Run the commands below from
+the repository root, where `go.mod` and the Makefile live.
+
 Development build:
 
 ```sh
@@ -320,7 +323,7 @@ make build
 Release-style build:
 
 ```sh
-go build -trimpath -ldflags="-s -w" -o wgman .
+go build -trimpath -ldflags="-s -w" -o wgman ./src/wgman
 ```
 
 The result should be a single executable file named `wgman`.

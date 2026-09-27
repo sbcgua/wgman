@@ -3,6 +3,14 @@
 These notes capture project conventions and design decisions that are useful for
 future changes. They intentionally omit implementation history.
 
+## Source Layout
+
+- The `wgman` command, its package tests, and their `testdata` fixtures live in
+  `src/wgman/`. Keep `go.mod`, the Makefile, and the built binary at the
+  repository root.
+- Build the command with `go build -o wgman ./src/wgman`. Package tests use
+  fixture paths relative to `src/wgman/`.
+
 ## Configuration And Data
 
 - Default config directory: `/etc/wireguard/wgman` (`defaultConfigDir`).
